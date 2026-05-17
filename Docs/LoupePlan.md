@@ -44,6 +44,25 @@ LoupeCore
   - ref-based action targets
 ```
 
+## Action Boundary
+
+Loupe should not rely on app-internal private `UIEvent` synthesis as the primary
+interaction mechanism. The app-side SDK and injector observe state. Host-side
+XCTest/XCUITest or a WebDriverAgent-style runner should execute interactions.
+
+The target flow is:
+
+```text
+loupe tap --test-id checkout.payButton
+  -> fetch /snapshot
+  -> resolve node frame
+  -> execute XCUITest coordinate tap
+  -> store trace artifacts
+```
+
+The current proof for this flow lives in the example UI test and
+`Examples/LoupeExample/run-loupe-driven-ui-test.sh`.
+
 ## Observation Policy
 
 Do not put the whole tree into LLM context by default.
@@ -96,8 +115,11 @@ expect("checkout.payButton").toBeBelow("checkout.password", spacing: 16)
 
 ## Next Implementation Steps
 
-1. Add a generated Codex skill/package release flow.
-2. Add an XCTest action driver wrapper.
-3. Add screenshot capture and baseline diff storage.
-4. Add richer selector scoring and `inspect(ref)`.
-5. Add layout/style assertion primitives.
+1. Add an XCTest/WebDriverAgent-style action runner that the CLI can drive.
+2. Add CLI commands for `tap`, `swipe`, `drag`, and `type`.
+3. Add trace artifacts for every action: before/after snapshots, screenshots,
+   target resolution, and logs.
+4. Add screenshot capture and baseline diff storage.
+5. Add richer selector scoring and `inspect(ref)`.
+6. Add layout/style assertion primitives.
+7. Add a generated Codex skill/package release flow.

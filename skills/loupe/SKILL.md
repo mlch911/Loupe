@@ -50,6 +50,21 @@ loupe query /tmp/loupe-snapshot.json --test-id checkout.payButton
 
 Use compact observation for LLM context. Keep full snapshots in files and query them by `testID`, text, role, or ref.
 
+## Actions
+
+Loupe CLI action commands are planned but not implemented yet. Do not assume
+`loupe tap`, `loupe swipe`, `loupe drag`, or `loupe type` exist.
+
+For now, use an XCTest/XCUITest runner to execute real simulator actions. The
+reference proof is:
+
+```bash
+Examples/LoupeExample/run-loupe-driven-ui-test.sh
+```
+
+That test fetches Loupe snapshots, resolves node frames, and uses
+`XCUICoordinate` for tap and drag actions.
+
 ## Debugging
 
 Run:

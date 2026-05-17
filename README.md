@@ -11,6 +11,9 @@ The package is split into four layers:
 
 Loupe intentionally avoids private `UIEvent` injection. App interaction should be driven by XCTest/XCUITest or a WebDriverAgent-style runner, while Loupe provides richer app-side context.
 
+See `Docs/Status.md` for the current verified capabilities, limitations, and
+the planned action-runner path.
+
 ## LoupeKit
 
 Add stable IDs and custom metadata in an app that links `LoupeKit`:
@@ -79,10 +82,24 @@ loupe query snapshot.json --role button
 
 ## Example
 
-`Examples/LoupeExample` contains a small UIKit app that does not link `LoupeKit`. It is used to verify simulator injection.
+`Examples/LoupeExample` contains a UIKit app that does not link `LoupeKit`. It
+is used to verify simulator injection, snapshotting, normal UI flows, and the
+current Loupe snapshot to coordinate-action proof.
 
 ```bash
 Examples/LoupeExample/run-injected.sh
 ```
 
-The script builds the example app and `LoupeInjector`, installs the app on a booted simulator, launches it with injection, fetches `/snapshot`, and queries `example.primaryButton`.
+The script builds the example app and `LoupeInjector`, installs the app on a
+booted simulator, launches it with injection, fetches `/snapshot`, and queries a
+visible table node.
+
+To verify that Loupe snapshot frames can drive real simulator interactions via
+XCUITest coordinates:
+
+```bash
+Examples/LoupeExample/run-loupe-driven-ui-test.sh
+```
+
+`loupe tap`, `loupe swipe`, `loupe drag`, and `loupe type` are not implemented
+yet. The example UI test is the current proof that the architecture works.

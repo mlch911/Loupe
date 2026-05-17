@@ -2,16 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-DEVICE="${LOUPE_DEVICE:-booted}"
+DEVICE_NAME="${LOUPE_DEVICE_NAME:-iPhone 17 Pro}"
 PORT="${LOUPE_PORT:-8765}"
 
 cd "$ROOT_DIR"
-
-if ! xcrun simctl list devices booted | grep -q Booted; then
-  FIRST_DEVICE="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
-  xcrun simctl boot "$FIRST_DEVICE"
-  DEVICE="booted"
-fi
 
 swift build
 
@@ -24,7 +18,7 @@ xcodebuild \
 xcodebuild \
   -project Examples/LoupeExample/LoupeExample.xcodeproj \
   -scheme LoupeExample \
-  -destination 'generic/platform=iOS Simulator' \
+  -destination "platform=iOS Simulator,name=$DEVICE_NAME" \
   -configuration Debug \
   build >/tmp/loupe-example-build.log
 
@@ -40,21 +34,22 @@ APP_PATH="$(
     -print | tail -1
 )"
 
-xcrun simctl install "$DEVICE" "$APP_PATH"
-xcrun simctl terminate "$DEVICE" dev.loupe.example >/dev/null 2>&1 || true
+xcrun simctl boot "$DEVICE_NAME" >/dev/null 2>&1 || true
+xcrun simctl install booted "$APP_PATH"
+xcrun simctl terminate booted dev.loupe.example >/dev/null 2>&1 || true
 
 .build/debug/loupe launch \
-  --device "$DEVICE" \
+  --device booted \
   --bundle-id dev.loupe.example \
   --inject \
   --env LOUPE_PORT="$PORT" >/dev/null
 
 sleep 2
 
-curl -sS "http://127.0.0.1:$PORT/health"
-echo
-
-SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
-curl -sS "http://127.0.0.1:$PORT/snapshot" > "$SNAPSHOT_PATH"
-
-.build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList
+LOUPE_PORT="$PORT" xcodebuild \
+  -project Examples/LoupeExample/LoupeExample.xcodeproj \
+  -scheme LoupeExample \
+  -destination "platform=iOS Simulator,name=$DEVICE_NAME" \
+  -configuration Debug \
+  -only-testing:LoupeExampleUITests/LoupeExampleUITests/testLoupeDrivenCoordinateActionsAgainstInjectedApp \
+  test

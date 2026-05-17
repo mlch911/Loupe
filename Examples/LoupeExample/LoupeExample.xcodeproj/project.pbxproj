@@ -10,7 +10,18 @@
 		A10000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* AppDelegate.swift */; };
 		A10000000000000000000002 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* SceneDelegate.swift */; };
 		A10000000000000000000003 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* ViewController.swift */; };
+		B10000000000000000000001 /* LoupeExampleUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* LoupeExampleUITests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B10000000000000000000070 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000040;
+			remoteInfo = LoupeExample;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000010 /* LoupeExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoupeExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -18,10 +29,19 @@
 		A10000000000000000000012 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A10000000000000000000013 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		A10000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10000000000000000000010 /* LoupeExampleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LoupeExampleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000011 /* LoupeExampleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoupeExampleUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A10000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000020 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -35,6 +55,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000031 /* LoupeExample */,
+				B10000000000000000000031 /* LoupeExampleUITests */,
 				A10000000000000000000032 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,8 +75,17 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000010 /* LoupeExample.app */,
+				B10000000000000000000010 /* LoupeExampleUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000031 /* LoupeExampleUITests */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000011 /* LoupeExampleUITests.swift */,
+			);
+			path = LoupeExampleUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -78,6 +108,24 @@
 			productReference = A10000000000000000000010 /* LoupeExample.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B10000000000000000000040 /* LoupeExampleUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000080 /* Build configuration list for PBXNativeTarget "LoupeExampleUITests" */;
+			buildPhases = (
+				B10000000000000000000050 /* Sources */,
+				B10000000000000000000020 /* Frameworks */,
+				B10000000000000000000060 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B10000000000000000000071 /* PBXTargetDependency */,
+			);
+			name = LoupeExampleUITests;
+			productName = LoupeExampleUITests;
+			productReference = B10000000000000000000010 /* LoupeExampleUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -89,6 +137,10 @@
 				TargetAttributes = {
 					A10000000000000000000040 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					B10000000000000000000040 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = A10000000000000000000040;
 					};
 				};
 			};
@@ -106,12 +158,20 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000040 /* LoupeExample */,
+				B10000000000000000000040 /* LoupeExampleUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A10000000000000000000060 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000060 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -131,7 +191,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000050 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* LoupeExampleUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B10000000000000000000071 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000040 /* LoupeExample */;
+			targetProxy = B10000000000000000000070 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A10000000000000000000072 /* Debug */ = {
@@ -270,6 +346,42 @@
 			};
 			name = Release;
 		};
+		B10000000000000000000081 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.loupe.example.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = LoupeExample;
+			};
+			name = Debug;
+		};
+		B10000000000000000000082 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.loupe.example.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = LoupeExample;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -287,6 +399,15 @@
 			buildConfigurations = (
 				A10000000000000000000081 /* Debug */,
 				A10000000000000000000082 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B10000000000000000000080 /* Build configuration list for PBXNativeTarget "LoupeExampleUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000081 /* Debug */,
+				B10000000000000000000082 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
