@@ -69,6 +69,14 @@ public struct LoupeAccessibility: Codable, Equatable {
     }
 }
 
+public struct LoupeNodeRuntimeProperties: Codable, Equatable {
+    public var frameworkBundleIdentifier: String?
+
+    public init(frameworkBundleIdentifier: String? = nil) {
+        self.frameworkBundleIdentifier = frameworkBundleIdentifier
+    }
+}
+
 public struct LoupeUIControlProperties: Codable, Equatable {
     public var controlState: String?
     public var controlEvents: [String]
@@ -357,6 +365,7 @@ public struct LoupeNode: Codable, Equatable {
     public var isInteractive: Bool
     public var style: LoupeStyle?
     public var accessibility: LoupeAccessibility?
+    public var runtime: LoupeNodeRuntimeProperties?
     public var uiKit: LoupeUIKitProperties?
     public var custom: [String: LoupeMetadataValue]
     public var children: [String]
@@ -378,6 +387,7 @@ public struct LoupeNode: Codable, Equatable {
         isInteractive: Bool,
         style: LoupeStyle? = nil,
         accessibility: LoupeAccessibility? = nil,
+        runtime: LoupeNodeRuntimeProperties? = nil,
         uiKit: LoupeUIKitProperties? = nil,
         custom: [String: LoupeMetadataValue] = [:],
         children: [String] = []
@@ -398,6 +408,7 @@ public struct LoupeNode: Codable, Equatable {
         self.isInteractive = isInteractive
         self.style = style
         self.accessibility = accessibility
+        self.runtime = runtime
         self.uiKit = uiKit
         self.custom = custom
         self.children = children

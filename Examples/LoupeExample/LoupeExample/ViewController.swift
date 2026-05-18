@@ -21,6 +21,7 @@ final class ViewController: UITableViewController {
 
     private var visibleItems: [ExampleItem] = []
     private let searchController = UISearchController(searchResultsController: nil)
+    private var didSendLoupeBridgeExample = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -61,6 +62,11 @@ final class ViewController: UITableViewController {
         navigationController?.navigationBar.prefersLargeTitles = true
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        sendLoupeBridgeExampleIfNeeded()
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 
@@ -75,6 +81,33 @@ final class ViewController: UITableViewController {
             button.frame = CGRect(x: 20, y: 10, width: max(tableView.bounds.width - 40, 0), height: 48)
         }
         tableView.tableHeaderView = header
+    }
+
+    private func sendLoupeBridgeExampleIfNeeded() {
+        guard !didSendLoupeBridgeExample else {
+            return
+        }
+        didSendLoupeBridgeExample = true
+
+        NotificationCenter.default.post(
+            name: Notification.Name("dev.loupe.log"),
+            object: nil,
+            userInfo: [
+                "level": "info",
+                "message": "example_customers_visible",
+                "metadata": ["screen": "customers"]
+            ]
+        )
+        NotificationCenter.default.post(
+            name: Notification.Name("dev.loupe.viewMetadata"),
+            object: tableView,
+            userInfo: [
+                "metadata": [
+                    "screen": "customers",
+                    "fixture": true
+                ]
+            ]
+        )
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {

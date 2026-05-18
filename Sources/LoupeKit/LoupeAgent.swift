@@ -195,6 +195,7 @@ public final class LoupeAgent {
             isInteractive: true,
             style: style(for: window),
             accessibility: accessibility(for: window),
+            runtime: runtimeProperties(for: window),
             uiKit: uiKitProperties(for: window),
             custom: window.loupeMetadata,
             children: childRefs
@@ -246,13 +247,16 @@ public final class LoupeAgent {
             )
         )
 
+        let testID = view.accessibilityIdentifier ?? stringMetadata("id", from: view.loupeMetadata)
+        let customMetadata = mergedMetadata(view.loupeMetadata, with: LoupeRuntime.shared.metadata(forTestID: testID))
+
         nodes[ref] = LoupeNode(
             ref: ref,
             parentRef: parentRef,
             kind: .view,
             typeName: typeName(of: view),
             role: role(for: view),
-            testID: view.accessibilityIdentifier ?? stringMetadata("id", from: view.loupeMetadata),
+            testID: testID,
             label: view.accessibilityLabel,
             value: view.accessibilityValue,
             placeholder: placeholder(for: view),
@@ -263,8 +267,9 @@ public final class LoupeAgent {
             isInteractive: isInteractive(view),
             style: style(for: view),
             accessibility: accessibility(for: view),
+            runtime: runtimeProperties(for: view),
             uiKit: uiKitProperties(for: view),
-            custom: view.loupeMetadata,
+            custom: customMetadata,
             children: childRefs
         )
 
@@ -775,6 +780,15 @@ private func nonEmpty(_ value: String?) -> String? {
     return trimmed
 }
 
+private func mergedMetadata(
+    _ base: [String: LoupeMetadataValue],
+    with overlay: [String: LoupeMetadataValue]
+) -> [String: LoupeMetadataValue] {
+    var result = base
+    result.merge(overlay) { _, new in new }
+    return result
+}
+
 private func accessibilityIdentifier(for element: NSObject) -> String? {
     if let identifier = (element as? UIAccessibilityIdentification)?.accessibilityIdentifier {
         return nonEmpty(identifier)
@@ -886,6 +900,13 @@ private func accessibility(for view: UIView) -> LoupeAccessibility {
         frame: frameInScreen(for: view),
         activationPoint: activationPoint(for: view),
         isElement: view.isAccessibilityElement
+    )
+}
+
+@MainActor
+private func runtimeProperties(for view: UIView) -> LoupeNodeRuntimeProperties {
+    LoupeNodeRuntimeProperties(
+        frameworkBundleIdentifier: Bundle(for: type(of: view)).bundleIdentifier
     )
 }
 

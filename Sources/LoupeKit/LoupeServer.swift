@@ -55,6 +55,9 @@ public final class LoupeServer: @unchecked Sendable {
         }
 
         socketFD = fd
+        Task { @MainActor in
+            LoupeRuntime.shared.activateBridge()
+        }
         queue.async { [weak self] in
             self?.acceptLoop(socketFD: fd)
         }

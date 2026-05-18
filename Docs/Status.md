@@ -89,8 +89,14 @@ compose.
 - Recordings can carry a user-facing `alias`, set with
   `loupe record-start <alias>` or `loupe record-start --alias <alias>`.
 - Touch recording enriches began events with ranked selector candidates from
-  the accessibility tree and view tree. `loupe replay` resolves those selectors
-  in the current app state before falling back to recorded coordinates.
+  the accessibility tree and view tree. SwiftUI-backed view-tree nodes are not
+  used as replay selector candidates; SwiftUI movement/input is only selector
+  addressable when the element is exposed through accessibility. `loupe replay`
+  resolves recorded selectors in the current app state before falling back to
+  recorded coordinates.
+- Injected apps can send logs and extra view metadata without importing
+  `LoupeKit` by posting `dev.loupe.log` and `dev.loupe.viewMetadata`
+  notifications. See `Docs/RuntimeCommunication.md`.
 - `loupe tap`, `swipe`, `drag`, `pinch`, `type`, `screenshot`, `record-start`,
   `record-stop`, `recording`, `logs`, and `replay` are available as CLI
   commands.
@@ -156,8 +162,8 @@ HID backend is still future work.
 
 Native accessibility traversal currently uses public in-app `UIAccessibility`
 container APIs. It enriches UIKit and custom accessibility containers, but
-SwiftUI inner `accessibilityIdentifier` values remain a known gap when neither
-the app process nor AXe exposes them as addressable accessibility nodes.
+SwiftUI inner `accessibilityIdentifier` values are intentionally selector-usable
+only when the app process exposes them as addressable accessibility nodes.
 
 The legacy action proof is implemented in
 `Examples/LoupeExample/LoupeExampleUITests/LoupeExampleUITests.swift` using

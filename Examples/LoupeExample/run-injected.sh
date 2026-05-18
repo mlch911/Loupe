@@ -55,6 +55,13 @@ curl -sS "http://127.0.0.1:$PORT/health"
 echo
 
 SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
+LOGS_PATH="/tmp/loupe-example-logs.json"
+INSPECT_PATH="/tmp/loupe-example-inspect.json"
 curl -sS "http://127.0.0.1:$PORT/snapshot" > "$SNAPSHOT_PATH"
+curl -sS "http://127.0.0.1:$PORT/logs" > "$LOGS_PATH"
 
 .build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList
+.build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id example.customerList > "$INSPECT_PATH"
+grep -q '"example_customers_visible"' "$LOGS_PATH"
+grep -q '"screen"' "$INSPECT_PATH"
+grep -q '"customers"' "$INSPECT_PATH"

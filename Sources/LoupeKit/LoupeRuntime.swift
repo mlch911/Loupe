@@ -13,8 +13,10 @@ public final class LoupeRuntime {
     private var recording: LoupeRecording?
     private var completedRecording: LoupeRecording?
     private var logs: [LoupeRuntimeLog] = []
+    private var metadataByTestID: [String: [String: LoupeMetadataValue]] = [:]
     private var overlayWindow: UIWindow?
     private var didInstallEventHook = false
+    private var didInstallBridge = false
 
     private init() {
         let environment = ProcessInfo.processInfo.environment
@@ -24,6 +26,10 @@ public final class LoupeRuntime {
             simulatorUDID: environment["SIMULATOR_UDID"],
             simulatorName: environment["SIMULATOR_DEVICE_NAME"]
         )
+    }
+
+    public func activateBridge() {
+        installBridgeIfNeeded()
     }
 
     public func startRecording(alias: String? = nil, showControls: Bool = true) -> LoupeRecording {
@@ -68,6 +74,13 @@ public final class LoupeRuntime {
 
     public func runtimeLogs() -> [LoupeRuntimeLog] {
         logs
+    }
+
+    func metadata(forTestID testID: String?) -> [String: LoupeMetadataValue] {
+        guard let testID = nonEmpty(testID) else {
+            return [:]
+        }
+        return metadataByTestID[testID] ?? [:]
     }
 
     public func log(
@@ -160,12 +173,20 @@ public final class LoupeRuntime {
         in tree: LoupeAccessibilityTree
     ) -> [LoupeRecordedTargetCandidate] {
         tree.nodes.values.compactMap { node in
-            guard node.isVisible, contains(point, in: node.frame), let selector = recordedSelector(
+            guard node.isVisible,
+                  contains(point, in: node.frame),
+                  let selector = recordedSelector(
                 testID: node.testID,
                 role: node.role,
                 text: LoupeAccessibilityTreeQuery.displayText(for: node),
                 ref: node.ref
-            ) else {
+            ),
+                  !shouldSkipRecordedCandidate(
+                    frame: node.frame,
+                    screen: tree.screen.size,
+                    role: node.role,
+                    selector: selector
+                  ) else {
                 return nil
             }
 
@@ -185,13 +206,23 @@ public final class LoupeRuntime {
     }
 
     private func viewCandidates(at point: LoupePoint, in snapshot: LoupeSnapshot) -> [LoupeRecordedTargetCandidate] {
-        snapshot.nodes.values.compactMap { node in
-            guard node.isVisible, contains(point, in: node.frame), let selector = recordedSelector(
+        let swiftUIRefs = swiftUISubtreeRefs(in: snapshot)
+        return snapshot.nodes.values.compactMap { node in
+            guard !swiftUIRefs.contains(node.ref),
+                  node.isVisible,
+                  contains(point, in: node.frame),
+                  let selector = recordedSelector(
                 testID: node.testID,
                 role: node.role,
                 text: LoupeObservationCompactor.displayText(for: node),
                 ref: node.ref
-            ) else {
+            ),
+                  !shouldSkipRecordedCandidate(
+                    frame: node.frame,
+                    screen: snapshot.screen.size,
+                    role: node.role,
+                    selector: selector
+                  ) else {
                 return nil
             }
 
@@ -224,6 +255,58 @@ public final class LoupeRuntime {
 
         UIApplication.installLoupeSendEventHook()
         didInstallEventHook = true
+    }
+
+    private func installBridgeIfNeeded() {
+        guard !didInstallBridge else {
+            return
+        }
+
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(receiveLogNotification(_:)),
+            name: .loupeLog,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(receiveViewMetadataNotification(_:)),
+            name: .loupeViewMetadata,
+            object: nil
+        )
+        didInstallBridge = true
+    }
+
+    @objc private func receiveLogNotification(_ notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let message = nonEmpty(userInfo["message"] as? String) else {
+            return
+        }
+
+        log(
+            level: nonEmpty(userInfo["level"] as? String) ?? "info",
+            message,
+            metadata: metadataPayload(from: userInfo)
+        )
+    }
+
+    @objc private func receiveViewMetadataNotification(_ notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        let metadata = metadataPayload(from: userInfo)
+        guard !metadata.isEmpty else {
+            return
+        }
+
+        if let view = (notification.object as? UIView) ?? (userInfo["view"] as? UIView) {
+            view.loupeMetadata.merge(metadata) { _, new in new }
+        }
+
+        if let testID = nonEmpty(userInfo["testID"] as? String ?? userInfo["id"] as? String) {
+            var existing = metadataByTestID[testID] ?? [:]
+            existing.merge(metadata) { _, new in new }
+            metadataByTestID[testID] = existing
+        }
     }
 
     private func showRecordingControls() {
@@ -346,11 +429,117 @@ private func area(_ rect: LoupeRect?) -> Double {
     return max(0, rect.width) * max(0, rect.height)
 }
 
+private func shouldSkipRecordedCandidate(
+    frame: LoupeRect?,
+    screen: LoupeSize,
+    role: String?,
+    selector: LoupeRecordedSelector
+) -> Bool {
+    guard let frame else {
+        return false
+    }
+    let screenArea = max(1, screen.width * screen.height)
+    guard area(frame) / screenArea > 0.45 else {
+        return false
+    }
+
+    if selector.kind == .ref {
+        return true
+    }
+
+    guard let role else {
+        return true
+    }
+
+    return [
+        "application",
+        "scene",
+        "window",
+        "tableView",
+        "collectionView",
+        "scrollView",
+        "tabBar",
+        "toolbar",
+        "navigationBar"
+    ].contains(role)
+}
+
+private func swiftUISubtreeRefs(in snapshot: LoupeSnapshot) -> Set<String> {
+    var refs = Set<String>()
+
+    func visit(_ ref: String, inheritedSwiftUI: Bool) {
+        guard let node = snapshot.nodes[ref] else {
+            return
+        }
+
+        let isSwiftUI = inheritedSwiftUI || isSwiftUIBackedNode(node)
+        if isSwiftUI {
+            refs.insert(ref)
+        }
+
+        node.children.forEach { visit($0, inheritedSwiftUI: isSwiftUI) }
+    }
+
+    snapshot.rootRefs.forEach { visit($0, inheritedSwiftUI: false) }
+    return refs
+}
+
+private func isSwiftUIBackedNode(_ node: LoupeNode) -> Bool {
+    node.runtime?.frameworkBundleIdentifier == "com.apple.SwiftUI"
+}
+
 private func nonEmpty(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
         return nil
     }
     return trimmed
+}
+
+private func metadataPayload(from userInfo: [AnyHashable: Any]) -> [String: LoupeMetadataValue] {
+    if let metadata = userInfo["metadata"] as? [String: Any] {
+        return metadata.compactMapValues(loupeMetadataValue)
+    }
+
+    var payload: [String: LoupeMetadataValue] = [:]
+    let reservedKeys: Set<String> = ["level", "message", "metadata", "view", "testID", "id"]
+    for (rawKey, rawValue) in userInfo {
+        guard let key = rawKey as? String, !reservedKeys.contains(key), let value = loupeMetadataValue(from: rawValue) else {
+            continue
+        }
+        payload[key] = value
+    }
+    return payload
+}
+
+private func loupeMetadataValue(from value: Any) -> LoupeMetadataValue? {
+    switch value {
+    case let value as String:
+        return .string(value)
+    case let value as Bool:
+        return .bool(value)
+    case let value as Int:
+        return .int(value)
+    case let value as Double:
+        return .double(value)
+    case let value as Float:
+        return .double(Double(value))
+    case let value as NSNumber:
+        if CFGetTypeID(value) == CFBooleanGetTypeID() {
+            return .bool(value.boolValue)
+        }
+        let doubleValue = value.doubleValue
+        if doubleValue.rounded() == doubleValue {
+            return .int(value.intValue)
+        }
+        return .double(doubleValue)
+    default:
+        return nil
+    }
+}
+
+public extension Notification.Name {
+    static let loupeLog = Notification.Name("dev.loupe.log")
+    static let loupeViewMetadata = Notification.Name("dev.loupe.viewMetadata")
 }
 
 private extension UIApplication {

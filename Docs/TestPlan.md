@@ -38,6 +38,9 @@ harness.
 - Runtime identity handshake:
   `loupe runtime --udid <sim>` verifies that the contacted Loupe host belongs to
   the expected simulator before recorder commands use it.
+- Injection communication:
+  apps can post `dev.loupe.log` and `dev.loupe.viewMetadata` notifications to
+  send custom logs and metadata without importing `LoupeKit`.
 - Recorder replay loop:
   `loupe record-start <alias>`, direct user or CLI interaction,
   `loupe record-stop --output <recording.json>`, app relaunch, then
@@ -84,10 +87,9 @@ harness.
 - Screenshot baseline diffing is not implemented yet.
 - AXe is the only action backend. Native Loupe HID dispatch is still future
   work.
-- SwiftUI is currently covered at the hosting-controller boundary plus any
-  UIKit-backed controls exposed in the view tree. Inner SwiftUI
-  `accessibilityIdentifier` values are not yet visible through Loupe's in-app
-  traversal or AXe's current `describe-ui` output.
+- SwiftUI movement/input selectors are intentionally limited to elements exposed
+  through the accessibility tree. Loupe does not synthesize selectors from
+  private SwiftUI view-tree implementation details.
 
 ## Reference Projects To Mine
 

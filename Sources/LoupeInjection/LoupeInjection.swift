@@ -29,6 +29,7 @@ private final class LoupeInjectedRuntime {
         let server = LoupeServer()
 
         do {
+            LoupeRuntime.shared.activateBridge()
             try server.start(port: port)
             self.server = server
             NSLog("LoupeInjector started on port \(port)")
