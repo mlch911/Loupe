@@ -166,8 +166,7 @@ public final class LoupeServer: @unchecked Sendable {
             }
         case "/accessibility":
             do {
-                let snapshot = LoupeAgent().captureSnapshot()
-                let tree = LoupeAccessibilityTree.build(from: snapshot)
+                let tree = LoupeAgent().captureAccessibilityTree()
                 let data = try makeLoupeJSONEncoder().encode(tree)
                 return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
             } catch {

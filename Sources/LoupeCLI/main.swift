@@ -390,7 +390,7 @@ struct LoupeCLI {
 
         while true {
             let snapshot = try await fetchSnapshot(host: options.host)
-            let accessibilityTree = LoupeAccessibilityTree.build(from: snapshot)
+            let accessibilityTree = try await fetchAccessibilityTree(host: options.host, fallbackSnapshot: snapshot)
             if let result = LoupeAccessibilityTreeQuery.first(
                 options.selector,
                 in: accessibilityTree,
@@ -457,7 +457,7 @@ struct LoupeCLI {
         }
 
         let snapshot = try await fetchSnapshot(host: options.host)
-        let accessibilityTree = LoupeAccessibilityTree.build(from: snapshot)
+        let accessibilityTree = try await fetchAccessibilityTree(host: options.host, fallbackSnapshot: snapshot)
         if let result = LoupeAccessibilityTreeQuery.first(selector, in: accessibilityTree) {
             if let point = result.activationPoint ?? center(of: result.frame) {
                 return ActionTarget(
@@ -502,6 +502,22 @@ struct LoupeCLI {
         return try decoder.decode(LoupeSnapshot.self, from: data)
     }
 
+    private static func fetchAccessibilityTree(
+        host: URL,
+        fallbackSnapshot: LoupeSnapshot
+    ) async throws -> LoupeAccessibilityTree {
+        let url = host.appendingPathComponent("accessibility")
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+                return LoupeAccessibilityTree.build(from: fallbackSnapshot)
+            }
+            return try JSONDecoder().decode(LoupeAccessibilityTree.self, from: data)
+        } catch {
+            return LoupeAccessibilityTree.build(from: fallbackSnapshot)
+        }
+    }
+
     private static func prepareTraceDirectory(_ url: URL) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
@@ -514,7 +530,7 @@ struct LoupeCLI {
         let snapshot = try await fetchSnapshot(host: options.host)
         try writeJSON(snapshot, to: traceDirectory.appendingPathComponent("before-snapshot.json"))
         try writeJSON(
-            LoupeAccessibilityTree.build(from: snapshot),
+            try await fetchAccessibilityTree(host: options.host, fallbackSnapshot: snapshot),
             to: traceDirectory.appendingPathComponent("before-accessibility.json")
         )
         try writeActionRecord(
@@ -541,7 +557,7 @@ struct LoupeCLI {
         let snapshot = try await fetchSnapshot(host: options.host)
         try writeJSON(snapshot, to: traceDirectory.appendingPathComponent("after-snapshot.json"))
         try writeJSON(
-            LoupeAccessibilityTree.build(from: snapshot),
+            try await fetchAccessibilityTree(host: options.host, fallbackSnapshot: snapshot),
             to: traceDirectory.appendingPathComponent("after-accessibility.json")
         )
         try writeActionRecord(

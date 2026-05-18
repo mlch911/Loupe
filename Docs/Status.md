@@ -50,14 +50,15 @@ compose.
   localhost.
 - `LoupeKit` can expose `/inspect?testID=...` for a full node with parent,
   sibling, and child summaries, `/subtree?testID=...&depth=...` for bounded
-  subtree inspection, `/accessibility` for a derived accessibility tree, and
+  subtree inspection, `/accessibility` for an accessibility tree that merges
+  view-derived nodes with native `UIAccessibility` container traversal, and
   `/audit` for machine-readable layout issues.
 - `LoupeInjector` can be built as a simulator-only injected library.
 - `loupe launch --inject` can launch the example app with
   `DYLD_INSERT_LIBRARIES` through `simctl`.
 - `loupe query` can resolve nodes from a full snapshot by `testID`, text, role,
   or ref.
-- `loupe accessibility` can print a derived accessibility tree, and
+- `loupe accessibility` can print a view-derived accessibility tree, and
   `loupe query --tree accessibility` can resolve selector matches from it.
 - `loupe inspect` can print a full node on demand so compact observations only
   need to carry object identity and refs.
@@ -90,6 +91,9 @@ compose.
   using a valid accessibility activation point when it lies inside the element
   frame, then falling back to the accessibility frame center, then to the view
   tree only if no accessibility match exists.
+- Runtime selector resolution, waits, and action traces fetch `/accessibility`
+  first, so they can use native accessibility elements when LoupeKit can see
+  them and fall back to the snapshot-derived tree when it cannot.
 - `Examples/LoupeExample/run-runtime-e2e.sh` verifies the XCTest-free runtime
   smoke path when AXe is installed.
 - `Examples/LoupeExample/run-axe-scenarios.sh` repeats AXe-backed navigation,
@@ -133,6 +137,11 @@ The low-level HID backend is delegated to AXe for now. Install AXe with
 formula, which declares AXe as a dependency. `loupe pinch` keeps the intended
 command shape, but AXe does not support pinch yet. A native `LoupeActionRunner`
 HID backend is still future work.
+
+Native accessibility traversal currently uses public in-app `UIAccessibility`
+container APIs. It enriches UIKit and custom accessibility containers, but
+SwiftUI inner `accessibilityIdentifier` values remain a known gap when neither
+the app process nor AXe exposes them as addressable accessibility nodes.
 
 The legacy action proof is implemented in
 `Examples/LoupeExample/LoupeExampleUITests/LoupeExampleUITests.swift` using
@@ -179,7 +188,7 @@ This keeps observation and action separated:
 
 1. Add native Loupe HID dispatch so action commands do not depend on AXe.
 2. Add action trace log capture and target query result details.
-3. Add native UIAccessibility traversal for non-UIView accessibility elements.
+3. Extend accessibility coverage for SwiftUI inner semantic elements.
 4. Add better selector scoring.
 5. Add screenshot baseline diff helpers.
 6. Expand layout/style assertions beyond the current audit checks.

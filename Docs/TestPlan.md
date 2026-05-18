@@ -23,6 +23,9 @@ harness.
 - Accessibility tree export and query:
   `loupe accessibility <snapshot.json>`, `loupe query --tree accessibility`,
   and `/accessibility`.
+- Runtime `/accessibility` merges Loupe's view-derived accessibility tree with
+  native `UIAccessibility` container traversal for non-UIView accessibility
+  elements, with the view tree as the fallback source of truth.
 - On-demand full node inspection:
   `loupe inspect <snapshot.json> --test-id <id>`
 - Runtime inspection endpoint:
@@ -66,14 +69,16 @@ harness.
   `uiKit.textField`, `uiKit.tabBar`, and `uiKit.webView`.
 - Retry policies beyond explicit `wait-for-visible` polling are not implemented
   yet.
-- The accessibility tree is currently derived from Loupe's captured UIKit view
-  tree. A native UIAccessibility traversal for non-UIView accessibility
-  elements is still future work.
+- Native `UIAccessibility` traversal depends on what the app process exposes
+  through public accessibility APIs; some framework-provided semantic nodes may
+  still require host-side accessibility tooling.
 - Screenshot baseline diffing is not implemented yet.
 - AXe is the only action backend. Native Loupe HID dispatch is still future
   work.
-- SwiftUI is currently covered at the hosting-controller boundary only. Inner
-  SwiftUI accessibility elements still need native accessibility traversal.
+- SwiftUI is currently covered at the hosting-controller boundary plus any
+  UIKit-backed controls exposed in the view tree. Inner SwiftUI
+  `accessibilityIdentifier` values are not yet visible through Loupe's in-app
+  traversal or AXe's current `describe-ui` output.
 
 ## Reference Projects To Mine
 
