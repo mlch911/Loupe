@@ -5,9 +5,11 @@ Runtime E2E inspection and action harness for iOS Simulator apps.
 ## Install
 
 ```bash
+brew tap heoblitz/loupe
 brew install loupe
-brew install cameroncooke/axe/axe
 ```
+
+The Homebrew formula installs AXe as a dependency for runtime actions.
 
 ## Launch
 
@@ -81,4 +83,4 @@ Examples/LoupeExample/run-loupe-driven-ui-test.sh
 ```
 
 Current status and design notes live in `Docs/Status.md`, `Docs/TestPlan.md`,
-and `Docs/RuntimeCommunication.md`.
+`Docs/RuntimeCommunication.md`, and `Docs/Homebrew.md`.

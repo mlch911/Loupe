@@ -154,11 +154,12 @@ loupe tap --test-id example.form.name
 loupe type "Ada"
 ```
 
-The low-level HID backend is delegated to AXe for now. Install AXe with
-`brew install cameroncooke/axe/axe`, or install Loupe through the Homebrew
-formula, which declares AXe as a dependency. `loupe pinch` keeps the intended
-command shape, but AXe does not support pinch yet. A native `LoupeActionRunner`
-HID backend is still future work.
+The low-level HID backend is delegated to AXe for now. The Homebrew formula
+declares `cameroncooke/axe/axe` as a dependency, so users should not need a
+separate AXe install step when installing Loupe through the tap. Source checkouts
+still need `axe` on `PATH` for local runtime scripts. `loupe pinch` keeps the
+intended command shape, but AXe does not support pinch yet. A native
+`LoupeActionRunner` HID backend is still future work.
 
 Native accessibility traversal currently uses public in-app `UIAccessibility`
 container APIs. It enriches UIKit and custom accessibility containers, but

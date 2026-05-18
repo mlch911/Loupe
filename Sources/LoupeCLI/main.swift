@@ -816,7 +816,7 @@ struct LoupeCLI {
             return ActionBackend(name: "axe", path: path)
         }
 
-        throw CLIError("No action backend found. Install AXe with `brew install cameroncooke/axe/axe`.")
+        throw CLIError("No action backend found. Install Loupe through Homebrew so AXe is installed as a dependency, or put `axe` on PATH for source builds.")
     }
 
     private static func resolvedBackendUDID(_ requested: String) throws -> String {
