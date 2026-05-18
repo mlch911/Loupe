@@ -1,8 +1,9 @@
-import XCTest
+import Foundation
+import Testing
 @testable import LoupeCore
 
-final class ObservationCompactorTests: XCTestCase {
-    func testCompactObservationKeepsVisibleTextAndInteractiveElements() {
+struct ObservationCompactorTests {
+    @Test func compactObservationKeepsVisibleTextAndInteractiveElements() {
         let snapshot = LoupeSnapshot(
             id: "s1",
             capturedAt: Date(timeIntervalSince1970: 0),
@@ -43,7 +44,17 @@ final class ObservationCompactorTests: XCTestCase {
                     frame: LoupeRect(x: 24, y: 760, width: 342, height: 52),
                     isVisible: true,
                     isEnabled: true,
-                    isInteractive: true
+                    isInteractive: true,
+                    uiKit: LoupeUIKitProperties(
+                        className: "UIButton",
+                        tag: 0,
+                        alpha: 1,
+                        isHidden: false,
+                        isOpaque: false,
+                        clipsToBounds: false,
+                        userInteractionEnabled: true,
+                        isFirstResponder: false
+                    )
                 ),
                 "n4": LoupeNode(
                     ref: "n4",
@@ -62,10 +73,12 @@ final class ObservationCompactorTests: XCTestCase {
 
         let observation = LoupeObservationCompactor.compact(snapshot)
 
-        XCTAssertEqual(observation.snapshotID, "s1")
-        XCTAssertEqual(observation.visibleTexts.map(\.text), ["Checkout", "Pay now"])
-        XCTAssertEqual(observation.interactive.count, 1)
-        XCTAssertEqual(observation.interactive[0].ref, "n3")
-        XCTAssertEqual(observation.interactive[0].testID, "checkout.payButton")
+        #expect(observation.snapshotID == "s1")
+        #expect(observation.visibleTexts.map { $0.text } == ["Checkout", "Pay now"])
+        #expect(observation.interactive.count == 1)
+        #expect(observation.interactive[0].ref == "n3")
+        #expect(observation.interactive[0].typeName == "UIButton")
+        #expect(observation.interactive[0].className == "UIButton")
+        #expect(observation.interactive[0].testID == "checkout.payButton")
     }
 }

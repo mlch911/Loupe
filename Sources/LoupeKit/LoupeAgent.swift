@@ -4,6 +4,9 @@ import LoupeCore
 #if canImport(UIKit)
 import ObjectiveC
 import UIKit
+#if canImport(WebKit)
+import WebKit
+#endif
 
 private nonisolated(unsafe) var loupeMetadataKey: UInt8 = 0
 
@@ -170,6 +173,8 @@ public final class LoupeAgent {
             isEnabled: true,
             isInteractive: true,
             style: style(for: window),
+            accessibility: accessibility(for: window),
+            uiKit: uiKitProperties(for: window),
             custom: window.loupeMetadata,
             children: childRefs
         )
@@ -200,6 +205,22 @@ public final class LoupeAgent {
             )
             childRefs.append(childRef)
         }
+        childRefs.append(
+            contentsOf: captureSyntheticBarButtonItems(
+                in: view,
+                parentRef: ref,
+                inheritedVisible: visible,
+                nodes: &nodes
+            )
+        )
+        childRefs.append(
+            contentsOf: captureSyntheticTabBarItems(
+                in: view,
+                parentRef: ref,
+                inheritedVisible: visible,
+                nodes: &nodes
+            )
+        )
 
         nodes[ref] = LoupeNode(
             ref: ref,
@@ -217,11 +238,106 @@ public final class LoupeAgent {
             isEnabled: isEnabled(view),
             isInteractive: isInteractive(view),
             style: style(for: view),
+            accessibility: accessibility(for: view),
+            uiKit: uiKitProperties(for: view),
             custom: view.loupeMetadata,
             children: childRefs
         )
 
         return ref
+    }
+
+    private func captureSyntheticBarButtonItems(
+        in view: UIView,
+        parentRef: String,
+        inheritedVisible: Bool,
+        nodes: inout [String: LoupeNode]
+    ) -> [String] {
+        guard let navigationBar = view as? UINavigationBar, let item = navigationBar.topItem else {
+            return []
+        }
+
+        let leftItems = item.leftBarButtonItems ?? item.leftBarButtonItem.map { [$0] } ?? []
+        let rightItems = item.rightBarButtonItems ?? item.rightBarButtonItem.map { [$0] } ?? []
+        let candidates = barButtonCandidateViews(in: navigationBar)
+        var consumedCandidateIDs = Set<ObjectIdentifier>()
+        var refs: [String] = []
+
+        for (index, barButtonItem) in leftItems.enumerated() {
+            let ref = makeRef()
+            let match = matchedBarButtonView(
+                for: barButtonItem,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticBarButtonNode(
+                barButtonItem,
+                ref: ref,
+                parentRef: parentRef,
+                position: "left",
+                index: index,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        for (index, barButtonItem) in rightItems.enumerated() {
+            let ref = makeRef()
+            let match = matchedBarButtonView(
+                for: barButtonItem,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticBarButtonNode(
+                barButtonItem,
+                ref: ref,
+                parentRef: parentRef,
+                position: "right",
+                index: index,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        return refs
+    }
+
+    private func captureSyntheticTabBarItems(
+        in view: UIView,
+        parentRef: String,
+        inheritedVisible: Bool,
+        nodes: inout [String: LoupeNode]
+    ) -> [String] {
+        guard let tabBar = view as? UITabBar, let items = tabBar.items, !items.isEmpty else {
+            return []
+        }
+
+        let candidates = tabBarItemCandidateViews(in: tabBar)
+        var consumedCandidateIDs = Set<ObjectIdentifier>()
+        var refs: [String] = []
+
+        for (index, tabBarItem) in items.enumerated() {
+            let ref = makeRef()
+            let match = matchedTabBarItemView(
+                for: tabBarItem,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticTabBarItemNode(
+                tabBarItem,
+                ref: ref,
+                parentRef: parentRef,
+                index: index,
+                selected: tabBar.selectedItem === tabBarItem,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        return refs
     }
 
     private func makeRef() -> String {
@@ -259,7 +375,21 @@ private func role(for view: UIView) -> String? {
     if view is UITextView { return "textView" }
     if view is UISwitch { return "switch" }
     if view is UISlider { return "slider" }
+    if view is UIStepper { return "stepper" }
     if view is UISegmentedControl { return "segmentedControl" }
+    if view is UIDatePicker { return "datePicker" }
+    if view is UIPageControl { return "pageControl" }
+    if view is UIProgressView { return "progress" }
+    if view is UIActivityIndicatorView { return "activityIndicator" }
+    if view is UICollectionView { return "collectionView" }
+    if view is UITableView { return "tableView" }
+    if view is UIPickerView { return "pickerView" }
+    if view is UITabBar { return "tabBar" }
+    if view is UIToolbar { return "toolbar" }
+    if view is UINavigationBar { return "navigationBar" }
+    #if canImport(WebKit)
+    if view is WKWebView { return "webView" }
+    #endif
     if view is UITableViewCell || view is UICollectionViewCell { return "cell" }
     if view is UIImageView { return "image" }
     if view is UILabel { return "staticText" }
@@ -337,7 +467,9 @@ private func style(for view: UIView) -> LoupeStyle {
         cornerRadius: finiteDouble(view.layer.cornerRadius.doubleValue),
         fontName: font(for: view)?.fontName,
         fontSize: font(for: view).flatMap { finiteDouble($0.pointSize.doubleValue) },
-        textColor: loupeColor(from: textColor(for: view), traitCollection: view.traitCollection)
+        textColor: loupeColor(from: textColor(for: view), traitCollection: view.traitCollection),
+        borderColor: loupeColor(from: borderColor(for: view), traitCollection: view.traitCollection),
+        borderWidth: finiteDouble(view.layer.borderWidth.doubleValue)
     )
 }
 
@@ -373,6 +505,14 @@ private func textColor(for view: UIView) -> UIColor? {
         return textView.textColor
     }
     return nil
+}
+
+@MainActor
+private func borderColor(for view: UIView) -> UIColor? {
+    guard let cgColor = view.layer.borderColor else {
+        return nil
+    }
+    return UIColor(cgColor: cgColor)
 }
 
 @MainActor
@@ -426,6 +566,733 @@ private func interfaceStyleName(_ style: UIUserInterfaceStyle) -> String {
     @unknown default:
         return "unknown"
     }
+}
+
+@MainActor
+private func accessibility(for view: UIView) -> LoupeAccessibility {
+    LoupeAccessibility(
+        identifier: view.accessibilityIdentifier,
+        label: view.accessibilityLabel,
+        value: view.accessibilityValue,
+        hint: view.accessibilityHint,
+        traits: accessibilityTraits(view.accessibilityTraits),
+        frame: frameInScreen(for: view),
+        activationPoint: activationPoint(for: view),
+        isElement: view.isAccessibilityElement
+    )
+}
+
+@MainActor
+private func activationPoint(for view: UIView) -> LoupePoint? {
+    guard view.window != nil else {
+        return nil
+    }
+
+    let point = view.accessibilityActivationPoint
+    return LoupePoint(x: finiteDouble(Double(point.x)) ?? 0, y: finiteDouble(Double(point.y)) ?? 0)
+}
+
+@MainActor
+private func uiKitProperties(for view: UIView) -> LoupeUIKitProperties {
+    LoupeUIKitProperties(
+        viewController: owningViewControllerName(for: view),
+        className: typeName(of: view),
+        tag: view.tag,
+        alpha: finiteDouble(view.alpha.doubleValue) ?? 0,
+        isHidden: view.isHidden,
+        isOpaque: view.isOpaque,
+        clipsToBounds: view.clipsToBounds,
+        contentMode: contentModeName(view.contentMode),
+        userInteractionEnabled: view.isUserInteractionEnabled,
+        gestureRecognizers: view.gestureRecognizers?.map { typeName(of: $0) } ?? [],
+        isFirstResponder: view.isFirstResponder,
+        windowLevel: (view as? UIWindow).flatMap { finiteDouble($0.windowLevel.rawValue.doubleValue) },
+        control: controlProperties(for: view),
+        label: labelProperties(for: view),
+        button: buttonProperties(for: view),
+        textField: textFieldProperties(for: view),
+        textView: textViewProperties(for: view),
+        switchControl: switchProperties(for: view),
+        slider: sliderProperties(for: view),
+        stepper: stepperProperties(for: view),
+        segmentedControl: segmentedControlProperties(for: view),
+        datePicker: datePickerProperties(for: view),
+        pageControl: pageControlProperties(for: view),
+        progressView: progressViewProperties(for: view),
+        activityIndicator: activityIndicatorProperties(for: view),
+        imageView: imageViewProperties(for: view),
+        pickerView: pickerViewProperties(for: view),
+        tabBar: tabBarProperties(for: view),
+        webView: webViewProperties(for: view)
+    )
+}
+
+@MainActor
+private func controlProperties(for view: UIView) -> LoupeUIControlProperties? {
+    guard let control = view as? UIControl else {
+        return nil
+    }
+    return LoupeUIControlProperties(
+        controlState: controlStateName(control.state),
+        controlEvents: controlEventNames(control.allControlEvents)
+    )
+}
+
+@MainActor
+private func labelProperties(for view: UIView) -> LoupeUILabelProperties? {
+    guard let label = view as? UILabel else {
+        return nil
+    }
+    return LoupeUILabelProperties(
+        textAlignment: textAlignmentName(label.textAlignment),
+        numberOfLines: label.numberOfLines,
+        lineBreakMode: lineBreakModeName(label.lineBreakMode)
+    )
+}
+
+@MainActor
+private func buttonProperties(for view: UIView) -> LoupeUIButtonProperties? {
+    guard let button = view as? UIButton else {
+        return nil
+    }
+    return LoupeUIButtonProperties(
+        lineBreakMode: button.titleLabel.map { lineBreakModeName($0.lineBreakMode) }
+    )
+}
+
+@MainActor
+private func textFieldProperties(for view: UIView) -> LoupeUITextFieldProperties? {
+    guard let textField = view as? UITextField else {
+        return nil
+    }
+    return LoupeUITextFieldProperties(
+        textAlignment: textAlignmentName(textField.textAlignment),
+        borderStyle: borderStyleName(textField.borderStyle)
+    )
+}
+
+@MainActor
+private func textViewProperties(for view: UIView) -> LoupeUITextViewProperties? {
+    guard let textView = view as? UITextView else {
+        return nil
+    }
+    return LoupeUITextViewProperties(textAlignment: textAlignmentName(textView.textAlignment))
+}
+
+@MainActor
+private func switchProperties(for view: UIView) -> LoupeUISwitchProperties? {
+    guard let switchView = view as? UISwitch else {
+        return nil
+    }
+    return LoupeUISwitchProperties(isOn: switchView.isOn)
+}
+
+@MainActor
+private func sliderProperties(for view: UIView) -> LoupeUISliderProperties? {
+    guard let slider = view as? UISlider else {
+        return nil
+    }
+    return LoupeUISliderProperties(
+        value: finiteDouble(Double(slider.value)),
+        minimumValue: finiteDouble(Double(slider.minimumValue)),
+        maximumValue: finiteDouble(Double(slider.maximumValue))
+    )
+}
+
+@MainActor
+private func stepperProperties(for view: UIView) -> LoupeUIStepperProperties? {
+    guard let stepper = view as? UIStepper else {
+        return nil
+    }
+    return LoupeUIStepperProperties(
+        value: finiteDouble(stepper.value),
+        minimumValue: finiteDouble(stepper.minimumValue),
+        maximumValue: finiteDouble(stepper.maximumValue),
+        stepValue: finiteDouble(stepper.stepValue)
+    )
+}
+
+@MainActor
+private func segmentedControlProperties(for view: UIView) -> LoupeUISegmentedControlProperties? {
+    guard let segmentedControl = view as? UISegmentedControl else {
+        return nil
+    }
+    return LoupeUISegmentedControlProperties(
+        selectedSegmentIndex: segmentedControl.selectedSegmentIndex,
+        segments: segmentTitles(for: view)
+    )
+}
+
+@MainActor
+private func datePickerProperties(for view: UIView) -> LoupeUIDatePickerProperties? {
+    guard let datePicker = view as? UIDatePicker else {
+        return nil
+    }
+    return LoupeUIDatePickerProperties(
+        mode: datePickerModeName(datePicker.datePickerMode),
+        date: datePicker.date,
+        minimumDate: datePicker.minimumDate,
+        maximumDate: datePicker.maximumDate
+    )
+}
+
+@MainActor
+private func pageControlProperties(for view: UIView) -> LoupeUIPageControlProperties? {
+    guard let pageControl = view as? UIPageControl else {
+        return nil
+    }
+    return LoupeUIPageControlProperties(
+        currentPage: pageControl.currentPage,
+        numberOfPages: pageControl.numberOfPages
+    )
+}
+
+@MainActor
+private func progressViewProperties(for view: UIView) -> LoupeUIProgressViewProperties? {
+    guard let progressView = view as? UIProgressView else {
+        return nil
+    }
+    return LoupeUIProgressViewProperties(value: finiteDouble(Double(progressView.progress)))
+}
+
+@MainActor
+private func activityIndicatorProperties(for view: UIView) -> LoupeUIActivityIndicatorProperties? {
+    guard let activityIndicator = view as? UIActivityIndicatorView else {
+        return nil
+    }
+    return LoupeUIActivityIndicatorProperties(
+        isAnimating: activityIndicator.isAnimating,
+        style: activityIndicatorStyleName(activityIndicator.style)
+    )
+}
+
+@MainActor
+private func imageViewProperties(for view: UIView) -> LoupeUIImageViewProperties? {
+    guard view is UIImageView else {
+        return nil
+    }
+    return LoupeUIImageViewProperties(imageSize: imageSize(for: view))
+}
+
+@MainActor
+private func pickerViewProperties(for view: UIView) -> LoupeUIPickerViewProperties? {
+    guard let pickerView = view as? UIPickerView else {
+        return nil
+    }
+    return LoupeUIPickerViewProperties(
+        numberOfComponents: pickerView.numberOfComponents,
+        selectedRows: pickerSelectedRows(for: view)
+    )
+}
+
+@MainActor
+private func tabBarProperties(for view: UIView) -> LoupeUITabBarProperties? {
+    guard let tabBar = view as? UITabBar else {
+        return nil
+    }
+    return LoupeUITabBarProperties(
+        items: tabBarItemTitles(for: view),
+        selectedItem: tabBar.selectedItem?.title
+    )
+}
+
+@MainActor
+private func webViewProperties(for view: UIView) -> LoupeWKWebViewProperties? {
+    #if canImport(WebKit)
+    guard view is WKWebView else {
+        return nil
+    }
+    return LoupeWKWebViewProperties(
+        url: webViewURL(for: view),
+        title: webViewTitle(for: view)
+    )
+    #else
+    return nil
+    #endif
+}
+
+@MainActor
+private func syntheticBarButtonNode(
+    _ item: UIBarButtonItem,
+    ref: String,
+    parentRef: String,
+    position: String,
+    index: Int,
+    matchedView: UIView?,
+    inheritedVisible: Bool
+) -> LoupeNode {
+    let frame = matchedView.flatMap(frameInScreen(for:))
+    let visible = inheritedVisible && item.isEnabled && frame != nil
+    var custom: [String: LoupeMetadataValue] = [
+        "synthetic": .bool(true),
+        "source": .string("UIBarButtonItem"),
+        "barPosition": .string(position),
+        "barIndex": .int(index)
+    ]
+    if let title = item.title {
+        custom["title"] = .string(title)
+    }
+
+    let className = matchedView.map(typeName(of:)) ?? "UIBarButtonItem"
+    return LoupeNode(
+        ref: ref,
+        parentRef: parentRef,
+        kind: .view,
+        typeName: "UIBarButtonItem",
+        role: "button",
+        testID: item.accessibilityIdentifier,
+        label: item.accessibilityLabel ?? item.title,
+        value: item.accessibilityValue,
+        text: item.title,
+        frame: frame,
+        isVisible: visible,
+        isEnabled: item.isEnabled,
+        isInteractive: item.isEnabled,
+        accessibility: LoupeAccessibility(
+            identifier: item.accessibilityIdentifier,
+            label: item.accessibilityLabel ?? item.title,
+            value: item.accessibilityValue,
+            hint: item.accessibilityHint,
+            traits: ["button"],
+            frame: frame,
+            activationPoint: frame.map { LoupePoint(x: $0.x + $0.width / 2, y: $0.y + $0.height / 2) },
+            isElement: true
+        ),
+        uiKit: LoupeUIKitProperties(
+            className: className,
+            tag: matchedView?.tag ?? 0,
+            alpha: matchedView.flatMap { finiteDouble($0.alpha.doubleValue) } ?? 1,
+            isHidden: matchedView?.isHidden ?? false,
+            isOpaque: matchedView?.isOpaque ?? false,
+            clipsToBounds: matchedView?.clipsToBounds ?? false,
+            contentMode: matchedView.map { contentModeName($0.contentMode) },
+            userInteractionEnabled: matchedView?.isUserInteractionEnabled ?? true,
+            gestureRecognizers: matchedView?.gestureRecognizers?.map { typeName(of: $0) } ?? [],
+            isFirstResponder: matchedView?.isFirstResponder ?? false,
+            control: matchedView.flatMap(controlProperties(for:)),
+            button: matchedView.flatMap(buttonProperties(for:))
+        ),
+        custom: custom
+    )
+}
+
+@MainActor
+private func syntheticTabBarItemNode(
+    _ item: UITabBarItem,
+    ref: String,
+    parentRef: String,
+    index: Int,
+    selected: Bool,
+    matchedView: UIView?,
+    inheritedVisible: Bool
+) -> LoupeNode {
+    let frame = matchedView.flatMap(frameInScreen(for:))
+    let visible = inheritedVisible && item.isEnabled && frame != nil
+    var custom: [String: LoupeMetadataValue] = [
+        "synthetic": .bool(true),
+        "source": .string("UITabBarItem"),
+        "tabIndex": .int(index),
+        "tabTag": .int(item.tag),
+        "selected": .bool(selected)
+    ]
+    if let title = item.title {
+        custom["title"] = .string(title)
+    }
+
+    let className = matchedView.map(typeName(of:)) ?? "UITabBarItem"
+    return LoupeNode(
+        ref: ref,
+        parentRef: parentRef,
+        kind: .view,
+        typeName: "UITabBarItem",
+        role: "button",
+        testID: item.accessibilityIdentifier,
+        label: item.accessibilityLabel ?? item.title,
+        value: item.accessibilityValue,
+        text: item.title,
+        frame: frame,
+        isVisible: visible,
+        isEnabled: item.isEnabled,
+        isInteractive: item.isEnabled,
+        accessibility: LoupeAccessibility(
+            identifier: item.accessibilityIdentifier,
+            label: item.accessibilityLabel ?? item.title,
+            value: item.accessibilityValue,
+            hint: item.accessibilityHint,
+            traits: selected ? ["button", "selected"] : ["button"],
+            frame: frame,
+            activationPoint: frame.map { LoupePoint(x: $0.x + $0.width / 2, y: $0.y + $0.height / 2) },
+            isElement: true
+        ),
+        uiKit: LoupeUIKitProperties(
+            className: className,
+            tag: matchedView?.tag ?? item.tag,
+            alpha: matchedView.flatMap { finiteDouble($0.alpha.doubleValue) } ?? 1,
+            isHidden: matchedView?.isHidden ?? false,
+            isOpaque: matchedView?.isOpaque ?? false,
+            clipsToBounds: matchedView?.clipsToBounds ?? false,
+            contentMode: matchedView.map { contentModeName($0.contentMode) },
+            userInteractionEnabled: matchedView?.isUserInteractionEnabled ?? true,
+            gestureRecognizers: matchedView?.gestureRecognizers?.map { typeName(of: $0) } ?? [],
+            isFirstResponder: matchedView?.isFirstResponder ?? false,
+            control: matchedView.flatMap(controlProperties(for:)),
+            button: matchedView.flatMap(buttonProperties(for:))
+        ),
+        custom: custom
+    )
+}
+
+@MainActor
+private func matchedBarButtonView(
+    for item: UIBarButtonItem,
+    candidates: [UIView],
+    consumedCandidateIDs: inout Set<ObjectIdentifier>
+) -> UIView? {
+    if let customView = item.customView {
+        let id = ObjectIdentifier(customView)
+        guard !consumedCandidateIDs.contains(id) else {
+            return nil
+        }
+        consumedCandidateIDs.insert(id)
+        return customView
+    }
+
+    let searchableTexts = [item.title, item.accessibilityLabel, item.accessibilityIdentifier]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+    guard !searchableTexts.isEmpty else {
+        return nil
+    }
+
+    for candidate in candidates where !consumedCandidateIDs.contains(ObjectIdentifier(candidate)) {
+        let text = descendantText(in: candidate)
+        let identifier = candidate.accessibilityIdentifier ?? ""
+        if searchableTexts.contains(where: { text.contains($0) || identifier == $0 }) {
+            consumedCandidateIDs.insert(ObjectIdentifier(candidate))
+            return candidate
+        }
+    }
+
+    return nil
+}
+
+@MainActor
+private func barButtonCandidateViews(in view: UIView) -> [UIView] {
+    var result: [UIView] = []
+
+    func walk(_ current: UIView) {
+        if current is UIControl {
+            result.append(current)
+        }
+        current.subviews.forEach(walk)
+    }
+
+    view.subviews.forEach(walk)
+    return result.sorted { lhs, rhs in
+        barButtonCandidateArea(lhs) > barButtonCandidateArea(rhs)
+    }
+}
+
+@MainActor
+private func matchedTabBarItemView(
+    for item: UITabBarItem,
+    candidates: [UIView],
+    consumedCandidateIDs: inout Set<ObjectIdentifier>
+) -> UIView? {
+    let searchableTexts = [item.title, item.accessibilityLabel, item.accessibilityIdentifier]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+    guard !searchableTexts.isEmpty else {
+        return nil
+    }
+
+    for candidate in candidates where !consumedCandidateIDs.contains(ObjectIdentifier(candidate)) {
+        let text = descendantText(in: candidate)
+        let identifier = candidate.accessibilityIdentifier ?? ""
+        if searchableTexts.contains(where: { text.contains($0) || identifier == $0 }) {
+            consumedCandidateIDs.insert(ObjectIdentifier(candidate))
+            return candidate
+        }
+    }
+
+    return nil
+}
+
+@MainActor
+private func tabBarItemCandidateViews(in view: UIView) -> [UIView] {
+    var result: [UIView] = []
+
+    func walk(_ current: UIView) {
+        if current is UIControl {
+            result.append(current)
+        }
+        current.subviews.forEach(walk)
+    }
+
+    view.subviews.forEach(walk)
+    return result.sorted {
+        let lhsFrame = frameInScreen(for: $0)
+        let rhsFrame = frameInScreen(for: $1)
+        return (lhsFrame?.x ?? 0) < (rhsFrame?.x ?? 0)
+    }
+}
+
+@MainActor
+private func barButtonCandidateArea(_ view: UIView) -> Double {
+    guard let frame = frameInScreen(for: view) else {
+        return 0
+    }
+    return frame.width * frame.height
+}
+
+@MainActor
+private func descendantText(in view: UIView) -> String {
+    var parts: [String] = []
+
+    func walk(_ current: UIView) {
+        if let value = text(for: current), !value.isEmpty {
+            parts.append(value)
+        }
+        if let label = current.accessibilityLabel, !label.isEmpty {
+            parts.append(label)
+        }
+        current.subviews.forEach(walk)
+    }
+
+    walk(view)
+    return parts.joined(separator: " ")
+}
+
+@MainActor
+private func owningViewControllerName(for view: UIView) -> String? {
+    var responder: UIResponder? = view.next
+    while let current = responder {
+        if let viewController = current as? UIViewController {
+            return typeName(of: viewController)
+        }
+        responder = current.next
+    }
+    return nil
+}
+
+private func accessibilityTraits(_ traits: UIAccessibilityTraits) -> [String] {
+    var names: [String] = []
+    let known: [(UIAccessibilityTraits, String)] = [
+        (.button, "button"),
+        (.link, "link"),
+        (.header, "header"),
+        (.searchField, "searchField"),
+        (.image, "image"),
+        (.selected, "selected"),
+        (.playsSound, "playsSound"),
+        (.keyboardKey, "keyboardKey"),
+        (.staticText, "staticText"),
+        (.summaryElement, "summaryElement"),
+        (.notEnabled, "notEnabled"),
+        (.updatesFrequently, "updatesFrequently"),
+        (.startsMediaSession, "startsMediaSession"),
+        (.adjustable, "adjustable"),
+        (.allowsDirectInteraction, "allowsDirectInteraction"),
+        (.causesPageTurn, "causesPageTurn")
+    ]
+
+    for (trait, name) in known where traits.contains(trait) {
+        names.append(name)
+    }
+    return names
+}
+
+private func contentModeName(_ mode: UIView.ContentMode) -> String {
+    switch mode {
+    case .scaleToFill: return "scaleToFill"
+    case .scaleAspectFit: return "scaleAspectFit"
+    case .scaleAspectFill: return "scaleAspectFill"
+    case .redraw: return "redraw"
+    case .center: return "center"
+    case .top: return "top"
+    case .bottom: return "bottom"
+    case .left: return "left"
+    case .right: return "right"
+    case .topLeft: return "topLeft"
+    case .topRight: return "topRight"
+    case .bottomLeft: return "bottomLeft"
+    case .bottomRight: return "bottomRight"
+    @unknown default: return "unknown"
+    }
+}
+
+@MainActor
+private func textAlignment(for view: UIView) -> String? {
+    if let label = view as? UILabel {
+        return textAlignmentName(label.textAlignment)
+    }
+    if let textField = view as? UITextField {
+        return textAlignmentName(textField.textAlignment)
+    }
+    if let textView = view as? UITextView {
+        return textAlignmentName(textView.textAlignment)
+    }
+    return nil
+}
+
+@MainActor
+private func lineBreakMode(for view: UIView) -> String? {
+    if let label = view as? UILabel {
+        return lineBreakModeName(label.lineBreakMode)
+    }
+    if let button = view as? UIButton, let label = button.titleLabel {
+        return lineBreakModeName(label.lineBreakMode)
+    }
+    return nil
+}
+
+@MainActor
+private func segmentTitles(for view: UIView) -> [String] {
+    guard let segmentedControl = view as? UISegmentedControl else {
+        return []
+    }
+    return (0..<segmentedControl.numberOfSegments)
+        .map { segmentedControl.titleForSegment(at: $0) ?? "" }
+}
+
+@MainActor
+private func imageSize(for view: UIView) -> LoupeSize? {
+    guard let image = (view as? UIImageView)?.image else {
+        return nil
+    }
+    return LoupeSize(
+        width: finiteDouble(image.size.width.doubleValue) ?? 0,
+        height: finiteDouble(image.size.height.doubleValue) ?? 0
+    )
+}
+
+@MainActor
+private func pickerSelectedRows(for view: UIView) -> [Int] {
+    guard let pickerView = view as? UIPickerView else {
+        return []
+    }
+    return (0..<pickerView.numberOfComponents).map { pickerView.selectedRow(inComponent: $0) }
+}
+
+@MainActor
+private func tabBarItemTitles(for view: UIView) -> [String] {
+    guard let tabBar = view as? UITabBar else {
+        return []
+    }
+    return tabBar.items?.map { $0.title ?? "" } ?? []
+}
+
+@MainActor
+private func webViewURL(for view: UIView) -> String? {
+    #if canImport(WebKit)
+    return (view as? WKWebView)?.url?.absoluteString
+    #else
+    return nil
+    #endif
+}
+
+@MainActor
+private func webViewTitle(for view: UIView) -> String? {
+    #if canImport(WebKit)
+    return (view as? WKWebView)?.title
+    #else
+    return nil
+    #endif
+}
+
+private func datePickerModeName(_ mode: UIDatePicker.Mode) -> String {
+    switch mode {
+    case .time: return "time"
+    case .date: return "date"
+    case .dateAndTime: return "dateAndTime"
+    case .countDownTimer: return "countDownTimer"
+    case .yearAndMonth: return "yearAndMonth"
+    @unknown default: return "unknown"
+    }
+}
+
+private func activityIndicatorStyleName(_ style: UIActivityIndicatorView.Style) -> String {
+    switch style {
+    case .medium: return "medium"
+    case .large: return "large"
+    case .white: return "white"
+    case .whiteLarge: return "whiteLarge"
+    case .gray: return "gray"
+    @unknown default: return "unknown"
+    }
+}
+
+private func textAlignmentName(_ alignment: NSTextAlignment) -> String {
+    switch alignment {
+    case .left: return "left"
+    case .center: return "center"
+    case .right: return "right"
+    case .justified: return "justified"
+    case .natural: return "natural"
+    @unknown default: return "unknown"
+    }
+}
+
+private func lineBreakModeName(_ mode: NSLineBreakMode) -> String {
+    switch mode {
+    case .byWordWrapping: return "byWordWrapping"
+    case .byCharWrapping: return "byCharWrapping"
+    case .byClipping: return "byClipping"
+    case .byTruncatingHead: return "byTruncatingHead"
+    case .byTruncatingTail: return "byTruncatingTail"
+    case .byTruncatingMiddle: return "byTruncatingMiddle"
+    @unknown default: return "unknown"
+    }
+}
+
+private func borderStyleName(_ style: UITextField.BorderStyle) -> String {
+    switch style {
+    case .none: return "none"
+    case .line: return "line"
+    case .bezel: return "bezel"
+    case .roundedRect: return "roundedRect"
+    @unknown default: return "unknown"
+    }
+}
+
+private func controlStateName(_ state: UIControl.State) -> String {
+    var names: [String] = []
+    if state.contains(.normal) { names.append("normal") }
+    if state.contains(.highlighted) { names.append("highlighted") }
+    if state.contains(.disabled) { names.append("disabled") }
+    if state.contains(.selected) { names.append("selected") }
+    if state.contains(.focused) { names.append("focused") }
+    if state.contains(.application) { names.append("application") }
+    if state.contains(.reserved) { names.append("reserved") }
+    return names.isEmpty ? "unknown" : names.joined(separator: ",")
+}
+
+private func controlEventNames(_ events: UIControl.Event) -> [String] {
+    var names: [String] = []
+    let known: [(UIControl.Event, String)] = [
+        (.touchDown, "touchDown"),
+        (.touchDownRepeat, "touchDownRepeat"),
+        (.touchDragInside, "touchDragInside"),
+        (.touchDragOutside, "touchDragOutside"),
+        (.touchDragEnter, "touchDragEnter"),
+        (.touchDragExit, "touchDragExit"),
+        (.touchUpInside, "touchUpInside"),
+        (.touchUpOutside, "touchUpOutside"),
+        (.touchCancel, "touchCancel"),
+        (.valueChanged, "valueChanged"),
+        (.primaryActionTriggered, "primaryActionTriggered"),
+        (.editingDidBegin, "editingDidBegin"),
+        (.editingChanged, "editingChanged"),
+        (.editingDidEnd, "editingDidEnd"),
+        (.editingDidEndOnExit, "editingDidEndOnExit")
+    ]
+
+    for (event, name) in known where events.contains(event) {
+        names.append(name)
+    }
+    return names
 }
 
 private func sceneActivationStateName(_ state: UIScene.ActivationState) -> String {

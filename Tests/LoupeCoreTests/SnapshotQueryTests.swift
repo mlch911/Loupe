@@ -1,8 +1,9 @@
-import XCTest
+import Foundation
+import Testing
 @testable import LoupeCore
 
-final class SnapshotQueryTests: XCTestCase {
-    func testFindByTestIDPrefersInteractiveResultOrder() {
+struct SnapshotQueryTests {
+    @Test func findByTestIDPrefersInteractiveResultOrder() {
         let snapshot = makeSnapshot(nodes: [
             LoupeNode(
                 ref: "n1",
@@ -34,10 +35,10 @@ final class SnapshotQueryTests: XCTestCase {
 
         let results = LoupeSnapshotQuery.find(.testID("checkout.payButton"), in: snapshot)
 
-        XCTAssertEqual(results.map(\.ref), ["n2", "n1"])
+        #expect(results.map { $0.ref } == ["n2", "n1"])
     }
 
-    func testFindByTextCanUsePartialCaseInsensitiveMatching() {
+    @Test func findByTextCanUsePartialCaseInsensitiveMatching() {
         let snapshot = makeSnapshot(nodes: [
             LoupeNode(
                 ref: "n1",
@@ -55,10 +56,10 @@ final class SnapshotQueryTests: XCTestCase {
 
         let results = LoupeSnapshotQuery.find(.text("complete", exact: false), in: snapshot)
 
-        XCTAssertEqual(results.map(\.ref), ["n1"])
+        #expect(results.map { $0.ref } == ["n1"])
     }
 
-    func testHiddenNodesAreExcludedByDefault() {
+    @Test func hiddenNodesAreExcludedByDefault() {
         let snapshot = makeSnapshot(nodes: [
             LoupeNode(
                 ref: "n1",
@@ -74,14 +75,13 @@ final class SnapshotQueryTests: XCTestCase {
             ),
         ])
 
-        XCTAssertTrue(LoupeSnapshotQuery.find(.testID("hidden.button"), in: snapshot).isEmpty)
-        XCTAssertEqual(
+        #expect(LoupeSnapshotQuery.find(.testID("hidden.button"), in: snapshot).isEmpty)
+        #expect(
             LoupeSnapshotQuery.find(
                 .testID("hidden.button"),
                 in: snapshot,
                 options: LoupeQueryOptions(includeHidden: true)
-            ).map(\.ref),
-            ["n1"]
+            ).map { $0.ref } == ["n1"]
         )
     }
 

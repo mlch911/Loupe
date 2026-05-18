@@ -1,4 +1,6 @@
+import SwiftUI
 import UIKit
+import WebKit
 
 struct ExampleItem {
     let index: Int
@@ -26,6 +28,13 @@ final class ViewController: UITableViewController {
         title = "Loupe Workbench"
         visibleItems = allItems
         navigationItem.largeTitleDisplayMode = .always
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: "Components",
+            style: .plain,
+            target: self,
+            action: #selector(openComponents)
+        )
+        navigationItem.leftBarButtonItem?.accessibilityIdentifier = "example.openComponents"
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Form",
             style: .plain,
@@ -37,6 +46,7 @@ final class ViewController: UITableViewController {
         tableView.register(ExampleCell.self, forCellReuseIdentifier: ExampleCell.reuseIdentifier)
         tableView.accessibilityIdentifier = "example.customerList"
         tableView.rowHeight = 76
+        tableView.tableHeaderView = fixtureHeaderView()
 
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
@@ -49,6 +59,22 @@ final class ViewController: UITableViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.navigationBar.prefersLargeTitles = true
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        guard let header = tableView.tableHeaderView, header.bounds.width != tableView.bounds.width else {
+            return
+        }
+
+        var frame = header.frame
+        frame.size.width = tableView.bounds.width
+        header.frame = frame
+        if let button = header.subviews.first(where: { $0.accessibilityIdentifier == "example.openFixtures" }) {
+            button.frame = CGRect(x: 20, y: 10, width: max(tableView.bounds.width - 40, 0), height: 48)
+        }
+        tableView.tableHeaderView = header
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -83,6 +109,31 @@ final class ViewController: UITableViewController {
         let controller = UINavigationController(rootViewController: FormViewController())
         controller.modalPresentationStyle = .formSheet
         present(controller, animated: true)
+    }
+
+    @objc private func openComponents() {
+        navigationController?.pushViewController(ComponentsViewController(), animated: true)
+    }
+
+    @objc private func openFixtures() {
+        navigationController?.pushViewController(FixtureTabController(), animated: true)
+    }
+
+    private func fixtureHeaderView() -> UIView {
+        let header = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 68))
+        header.accessibilityIdentifier = "example.fixtureHeader"
+
+        let button = UIButton(type: .system)
+        button.setTitle("Open Mixed Fixtures", for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        button.backgroundColor = .secondarySystemFill
+        button.layer.cornerRadius = 10
+        button.accessibilityIdentifier = "example.openFixtures"
+        button.addTarget(self, action: #selector(openFixtures), for: .touchUpInside)
+        button.frame = CGRect(x: 20, y: 10, width: 362, height: 48)
+        header.addSubview(button)
+
+        return header
     }
 }
 
@@ -251,6 +302,630 @@ final class DetailViewController: UIViewController {
         if recognizer.state == .ended || recognizer.state == .cancelled {
             panOffset = nextOffset
         }
+    }
+
+}
+
+final class ComponentsViewController: UIViewController {
+    private let scrollView = UIScrollView()
+    private let symbolImageView = UIImageView()
+    private let stateSwitch = UISwitch()
+    private let volumeSlider = UISlider()
+    private let stepper = UIStepper()
+    private let segmentedControl = UISegmentedControl(items: ["Small", "Large"])
+    private let datePicker = UIDatePicker()
+    private let tabBar = UITabBar()
+    private lazy var collectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: 96, height: 56)
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
+        return UICollectionView(frame: .zero, collectionViewLayout: layout)
+    }()
+    private let pickerView = UIPickerView()
+    private let pageControl = UIPageControl()
+    private let progressView = UIProgressView(progressViewStyle: .default)
+    private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let textField = UITextField()
+    private let noteView = UITextView()
+    private let alertButton = UIButton(type: .system)
+    private let primaryButton = UIButton(type: .system)
+    private let designCard = UIView()
+    private let componentTiles = ["Label", "Image", "Control", "Input", "List"]
+    private let pickerRows = ["North", "South", "West"]
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        title = "Components"
+        navigationItem.hidesBackButton = true
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: "Back",
+            style: .plain,
+            target: self,
+            action: #selector(pop)
+        )
+        navigationItem.leftBarButtonItem?.accessibilityIdentifier = "example.components.back"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "Done",
+            style: .done,
+            target: self,
+            action: #selector(markDone)
+        )
+        navigationItem.rightBarButtonItem?.accessibilityIdentifier = "example.components.done"
+
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "example.components"
+        configureControls()
+        layoutControls()
+    }
+
+    private func configureControls() {
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.accessibilityIdentifier = "example.components.scrollView"
+
+        symbolImageView.image = UIImage(systemName: "checkmark.seal.fill")
+        symbolImageView.tintColor = .systemGreen
+        symbolImageView.contentMode = .scaleAspectFit
+        symbolImageView.accessibilityIdentifier = "example.components.image"
+
+        stateSwitch.isOn = true
+        stateSwitch.accessibilityIdentifier = "example.components.switch"
+
+        volumeSlider.minimumValue = 0
+        volumeSlider.maximumValue = 100
+        volumeSlider.value = 42
+        volumeSlider.accessibilityIdentifier = "example.components.slider"
+
+        stepper.minimumValue = 0
+        stepper.maximumValue = 10
+        stepper.stepValue = 2
+        stepper.value = 4
+        stepper.accessibilityIdentifier = "example.components.stepper"
+
+        segmentedControl.selectedSegmentIndex = 1
+        segmentedControl.accessibilityIdentifier = "example.components.segmented"
+
+        datePicker.datePickerMode = .date
+        datePicker.preferredDatePickerStyle = .compact
+        datePicker.date = Date(timeIntervalSince1970: 1_704_067_200)
+        datePicker.accessibilityIdentifier = "example.components.datePicker"
+
+        tabBar.items = [
+            UITabBarItem(title: "Home", image: UIImage(systemName: "house"), tag: 0),
+            UITabBarItem(title: "Search", image: UIImage(systemName: "magnifyingglass"), tag: 1),
+        ]
+        tabBar.selectedItem = tabBar.items?.first
+        tabBar.accessibilityIdentifier = "example.components.tabBar"
+
+        collectionView.dataSource = self
+        collectionView.delegate = self
+        collectionView.backgroundColor = .secondarySystemBackground
+        collectionView.layer.cornerRadius = 8
+        collectionView.register(ComponentTileCell.self, forCellWithReuseIdentifier: ComponentTileCell.reuseIdentifier)
+        collectionView.accessibilityIdentifier = "example.components.collectionView"
+
+        pickerView.dataSource = self
+        pickerView.delegate = self
+        pickerView.selectRow(1, inComponent: 0, animated: false)
+        pickerView.accessibilityIdentifier = "example.components.pickerView"
+
+        pageControl.numberOfPages = 5
+        pageControl.currentPage = 2
+        pageControl.accessibilityIdentifier = "example.components.pageControl"
+
+        progressView.progress = 0.65
+        progressView.accessibilityIdentifier = "example.components.progress"
+
+        activityIndicator.startAnimating()
+        activityIndicator.accessibilityIdentifier = "example.components.activity"
+
+        textField.placeholder = "Component text"
+        textField.text = "Inspectable"
+        textField.borderStyle = .roundedRect
+        textField.accessibilityIdentifier = "example.components.textField"
+
+        noteView.text = "Notes stay inspectable without bloating compact context."
+        noteView.font = .preferredFont(forTextStyle: .body)
+        noteView.layer.borderColor = UIColor.separator.cgColor
+        noteView.layer.borderWidth = 1
+        noteView.layer.cornerRadius = 8
+        noteView.accessibilityIdentifier = "example.components.textView"
+
+        alertButton.setTitle("Show Alert", for: .normal)
+        alertButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        alertButton.backgroundColor = .secondarySystemFill
+        alertButton.layer.cornerRadius = 10
+        alertButton.accessibilityIdentifier = "example.components.alertButton"
+        alertButton.addTarget(self, action: #selector(showAlert), for: .touchUpInside)
+
+        primaryButton.setTitle("Primary Action", for: .normal)
+        primaryButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        primaryButton.backgroundColor = .systemBlue
+        primaryButton.tintColor = .white
+        primaryButton.layer.cornerRadius = 12
+        primaryButton.accessibilityIdentifier = "example.components.button"
+        primaryButton.addTarget(self, action: #selector(markDone), for: .touchUpInside)
+
+        designCard.backgroundColor = .systemTeal
+        designCard.layer.cornerRadius = 20
+        designCard.layer.borderWidth = 2
+        designCard.layer.borderColor = UIColor.systemMint.cgColor
+        designCard.accessibilityIdentifier = "example.design.card"
+    }
+
+    private func layoutControls() {
+        let label = UILabel()
+        label.text = "UIKit Label"
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.numberOfLines = 1
+        label.accessibilityIdentifier = "example.components.label"
+
+        let switchRow = row(title: "Enabled", control: stateSwitch, id: "example.components.switchRow")
+        let sliderRow = row(title: "Volume", control: volumeSlider, id: "example.components.sliderRow")
+        let stepperRow = row(title: "Stepper", control: stepper, id: "example.components.stepperRow")
+        let dateRow = row(title: "Date", control: datePicker, id: "example.components.datePickerRow")
+        let progressRow = row(title: "Progress", control: progressView, id: "example.components.progressRow")
+        let activityRow = row(title: "Loading", control: activityIndicator, id: "example.components.activityRow")
+
+        let designLabel = UILabel()
+        designLabel.text = "Design fixture"
+        designLabel.textColor = .white
+        designLabel.font = .preferredFont(forTextStyle: .headline)
+        designLabel.translatesAutoresizingMaskIntoConstraints = false
+        designLabel.accessibilityIdentifier = "example.design.card.label"
+        designCard.addSubview(designLabel)
+
+        let stack = UIStackView(arrangedSubviews: [
+            label,
+            symbolImageView,
+            switchRow,
+            sliderRow,
+            stepperRow,
+            segmentedControl,
+            alertButton,
+            dateRow,
+            tabBar,
+            collectionView,
+            pickerView,
+            pageControl,
+            progressRow,
+            activityRow,
+            textField,
+            noteView,
+            primaryButton,
+            designCard,
+        ])
+        stack.axis = .vertical
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scrollView)
+        scrollView.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -24),
+            stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -40),
+            symbolImageView.heightAnchor.constraint(equalToConstant: 36),
+            tabBar.heightAnchor.constraint(equalToConstant: 52),
+            collectionView.heightAnchor.constraint(equalToConstant: 72),
+            pickerView.heightAnchor.constraint(equalToConstant: 120),
+            noteView.heightAnchor.constraint(equalToConstant: 96),
+            alertButton.heightAnchor.constraint(equalToConstant: 44),
+            primaryButton.heightAnchor.constraint(equalToConstant: 48),
+            designCard.heightAnchor.constraint(equalToConstant: 88),
+            designLabel.centerXAnchor.constraint(equalTo: designCard.centerXAnchor),
+            designLabel.centerYAnchor.constraint(equalTo: designCard.centerYAnchor),
+        ])
+    }
+
+    private func row(title: String, control: UIView, id: String) -> UIView {
+        let label = UILabel()
+        label.text = title
+        label.font = .preferredFont(forTextStyle: .body)
+
+        let row = UIStackView(arrangedSubviews: [label, control])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 12
+        row.accessibilityIdentifier = id
+        if control === progressView {
+            control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        return row
+    }
+
+    @objc private func markDone() {
+        primaryButton.setTitle("Done", for: .normal)
+    }
+
+    @objc private func showAlert() {
+        let alert = UIAlertController(title: "UIKit Alert", message: "Inspectable alert fixture", preferredStyle: .alert)
+        alert.view.accessibilityIdentifier = "example.components.alert"
+        alert.addAction(UIAlertAction(title: "Close", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc private func pop() {
+        navigationController?.popViewController(animated: true)
+    }
+}
+
+extension ComponentsViewController: UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        componentTiles.count
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        cellForItemAt indexPath: IndexPath
+    ) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(
+            withReuseIdentifier: ComponentTileCell.reuseIdentifier,
+            for: indexPath
+        ) as! ComponentTileCell
+        cell.configure(text: componentTiles[indexPath.item], index: indexPath.item)
+        return cell
+    }
+}
+
+extension ComponentsViewController: UIPickerViewDataSource, UIPickerViewDelegate {
+    func numberOfComponents(in pickerView: UIPickerView) -> Int {
+        1
+    }
+
+    func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
+        pickerRows.count
+    }
+
+    func pickerView(
+        _ pickerView: UIPickerView,
+        titleForRow row: Int,
+        forComponent component: Int
+    ) -> String? {
+        pickerRows[row]
+    }
+}
+
+final class ComponentTileCell: UICollectionViewCell {
+    static let reuseIdentifier = "ComponentTileCell"
+
+    private let titleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(text: String, index: Int) {
+        titleLabel.text = text
+        accessibilityIdentifier = "example.components.collection.\(index)"
+        titleLabel.accessibilityIdentifier = "example.components.collection.\(index).label"
+    }
+
+    private func configure() {
+        contentView.backgroundColor = .systemBackground
+        contentView.layer.cornerRadius = 8
+        contentView.layer.borderWidth = 1
+        contentView.layer.borderColor = UIColor.separator.cgColor
+
+        titleLabel.font = .preferredFont(forTextStyle: .caption1)
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(titleLabel)
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+    }
+}
+
+final class FixtureTabController: UITabBarController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        title = "Fixtures"
+        navigationItem.hidesBackButton = true
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: "Back",
+            style: .plain,
+            target: self,
+            action: #selector(pop)
+        )
+        navigationItem.leftBarButtonItem?.accessibilityIdentifier = "example.fixtures.back"
+        view.accessibilityIdentifier = "example.fixtures"
+        tabBar.accessibilityIdentifier = "example.fixtures.tabBar"
+        viewControllers = [
+            fixtureController(SwiftUIFixtureController(), title: "SwiftUI", symbol: "sparkles", id: "swiftui", tag: 0),
+            fixtureController(WebFixtureController(), title: "Web", symbol: "globe", id: "web", tag: 1),
+            fixtureController(KeyboardFixtureController(), title: "Keyboard", symbol: "keyboard", id: "keyboard", tag: 2),
+            fixtureController(NestedScrollFixtureController(), title: "Nested", symbol: "rectangle.stack", id: "nested", tag: 3),
+        ]
+    }
+
+    private func fixtureController(
+        _ controller: UIViewController,
+        title: String,
+        symbol: String,
+        id: String,
+        tag: Int
+    ) -> UIViewController {
+        controller.title = title
+        let tabBarItem = UITabBarItem(title: title, image: UIImage(systemName: symbol), tag: tag)
+        tabBarItem.accessibilityIdentifier = "example.fixtures.tab.\(id)"
+        controller.tabBarItem = tabBarItem
+        return controller
+    }
+
+    @objc private func pop() {
+        navigationController?.popViewController(animated: true)
+    }
+}
+
+struct SwiftUIFixtureView: View {
+    @State private var enabled = true
+    @State private var value = 0.35
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("SwiftUI Fixture")
+                .font(.title2.weight(.semibold))
+                .accessibilityIdentifier("example.fixtures.swiftui.title")
+
+            Toggle("Enabled", isOn: $enabled)
+                .accessibilityIdentifier("example.fixtures.swiftui.toggle")
+
+            Slider(value: $value)
+                .accessibilityIdentifier("example.fixtures.swiftui.slider")
+
+            Button(enabled ? "Disable" : "Enable") {
+                enabled.toggle()
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("example.fixtures.swiftui.button")
+
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
+        .accessibilityIdentifier("example.fixtures.swiftui")
+    }
+}
+
+final class SwiftUIFixtureController: UIHostingController<SwiftUIFixtureView> {
+    init() {
+        super.init(rootView: SwiftUIFixtureView())
+        view.accessibilityIdentifier = "example.fixtures.swiftui.host"
+    }
+
+    @available(*, unavailable)
+    required dynamic init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+final class WebFixtureController: UIViewController {
+    private let webView = WKWebView(frame: .zero)
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "example.fixtures.web"
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.accessibilityIdentifier = "example.fixtures.web.webView"
+        view.addSubview(webView)
+
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        webView.loadHTMLString(
+            """
+            <!doctype html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font: -apple-system-body; margin: 24px; color: #111; background: #fff; }
+                button { font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #999; }
+              </style>
+            </head>
+            <body>
+              <h1>Web Fixture</h1>
+              <p id="status">Loaded inside WKWebView</p>
+              <button aria-label="Web action">Action</button>
+            </body>
+            </html>
+            """,
+            baseURL: URL(string: "https://loupe.local/fixture")
+        )
+    }
+}
+
+final class KeyboardFixtureController: UIViewController {
+    private let firstNameField = UITextField()
+    private let emailField = UITextField()
+    private let codeField = UITextField()
+    private let notesView = UITextView()
+    private let resultLabel = UILabel()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "example.fixtures.keyboard"
+        configureControls()
+        layoutControls()
+    }
+
+    private func configureControls() {
+        firstNameField.placeholder = "First name"
+        firstNameField.borderStyle = .roundedRect
+        firstNameField.textContentType = .givenName
+        firstNameField.accessibilityIdentifier = "example.fixtures.keyboard.firstName"
+
+        emailField.placeholder = "Email"
+        emailField.borderStyle = .roundedRect
+        emailField.keyboardType = .emailAddress
+        emailField.textContentType = .emailAddress
+        emailField.accessibilityIdentifier = "example.fixtures.keyboard.email"
+
+        codeField.placeholder = "One time code"
+        codeField.borderStyle = .roundedRect
+        codeField.keyboardType = .numberPad
+        codeField.textContentType = .oneTimeCode
+        codeField.accessibilityIdentifier = "example.fixtures.keyboard.code"
+
+        notesView.font = .preferredFont(forTextStyle: .body)
+        notesView.layer.borderColor = UIColor.separator.cgColor
+        notesView.layer.borderWidth = 1
+        notesView.layer.cornerRadius = 8
+        notesView.accessibilityIdentifier = "example.fixtures.keyboard.notes"
+
+        resultLabel.text = "Waiting"
+        resultLabel.font = .preferredFont(forTextStyle: .body)
+        resultLabel.accessibilityIdentifier = "example.fixtures.keyboard.result"
+    }
+
+    private func layoutControls() {
+        let saveButton = UIButton(type: .system)
+        saveButton.setTitle("Save Keyboard Form", for: .normal)
+        saveButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        saveButton.backgroundColor = .systemIndigo
+        saveButton.tintColor = .white
+        saveButton.layer.cornerRadius = 10
+        saveButton.accessibilityIdentifier = "example.fixtures.keyboard.save"
+        saveButton.addTarget(self, action: #selector(save), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [
+            firstNameField,
+            emailField,
+            codeField,
+            notesView,
+            saveButton,
+            resultLabel,
+        ])
+        stack.axis = .vertical
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            notesView.heightAnchor.constraint(equalToConstant: 120),
+            saveButton.heightAnchor.constraint(equalToConstant: 48),
+        ])
+    }
+
+    @objc private func save() {
+        resultLabel.text = "Saved keyboard form"
+    }
+}
+
+final class NestedScrollFixtureController: UIViewController {
+    private let outerScrollView = UIScrollView()
+    private let horizontalScrollView = UIScrollView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "example.fixtures.nested"
+        layoutFixture()
+    }
+
+    private func layoutFixture() {
+        outerScrollView.translatesAutoresizingMaskIntoConstraints = false
+        outerScrollView.accessibilityIdentifier = "example.fixtures.nested.outerScroll"
+        view.addSubview(outerScrollView)
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        outerScrollView.addSubview(stack)
+
+        let header = UILabel()
+        header.text = "Nested Scroll Fixture"
+        header.font = .preferredFont(forTextStyle: .title2)
+        header.accessibilityIdentifier = "example.fixtures.nested.title"
+        stack.addArrangedSubview(header)
+
+        horizontalScrollView.heightAnchor.constraint(equalToConstant: 112).isActive = true
+        horizontalScrollView.accessibilityIdentifier = "example.fixtures.nested.horizontalScroll"
+        stack.addArrangedSubview(horizontalScrollView)
+
+        let horizontalStack = UIStackView()
+        horizontalStack.axis = .horizontal
+        horizontalStack.spacing = 12
+        horizontalStack.translatesAutoresizingMaskIntoConstraints = false
+        horizontalScrollView.addSubview(horizontalStack)
+
+        for index in 0..<8 {
+            let tile = UILabel()
+            tile.text = "Tile \(index + 1)"
+            tile.textAlignment = .center
+            tile.font = .preferredFont(forTextStyle: .headline)
+            tile.backgroundColor = index.isMultiple(of: 2) ? .systemBlue : .systemGreen
+            tile.textColor = .white
+            tile.layer.cornerRadius = 10
+            tile.layer.masksToBounds = true
+            tile.accessibilityIdentifier = "example.fixtures.nested.tile.\(index)"
+            horizontalStack.addArrangedSubview(tile)
+            tile.widthAnchor.constraint(equalToConstant: 132).isActive = true
+            tile.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        }
+
+        for index in 0..<16 {
+            let row = UILabel()
+            row.text = "Nested row \(index + 1)"
+            row.font = .preferredFont(forTextStyle: .body)
+            row.backgroundColor = .secondarySystemBackground
+            row.layer.cornerRadius = 8
+            row.layer.masksToBounds = true
+            row.accessibilityIdentifier = "example.fixtures.nested.row.\(index)"
+            stack.addArrangedSubview(row)
+            row.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        }
+
+        NSLayoutConstraint.activate([
+            outerScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            outerScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            outerScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            outerScrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: outerScrollView.contentLayoutGuide.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: outerScrollView.contentLayoutGuide.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: outerScrollView.contentLayoutGuide.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(equalTo: outerScrollView.contentLayoutGuide.bottomAnchor, constant: -24),
+            stack.widthAnchor.constraint(equalTo: outerScrollView.frameLayoutGuide.widthAnchor, constant: -40),
+            horizontalStack.leadingAnchor.constraint(equalTo: horizontalScrollView.contentLayoutGuide.leadingAnchor),
+            horizontalStack.trailingAnchor.constraint(equalTo: horizontalScrollView.contentLayoutGuide.trailingAnchor),
+            horizontalStack.topAnchor.constraint(equalTo: horizontalScrollView.contentLayoutGuide.topAnchor),
+            horizontalStack.bottomAnchor.constraint(equalTo: horizontalScrollView.contentLayoutGuide.bottomAnchor),
+            horizontalStack.heightAnchor.constraint(equalTo: horizontalScrollView.frameLayoutGuide.heightAnchor),
+        ])
     }
 }
 

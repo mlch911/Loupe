@@ -41,6 +41,21 @@ public struct LoupeRect: Codable, Equatable {
         guard !isEmpty, !other.isEmpty else { return false }
         return x < other.maxX && maxX > other.x && y < other.maxY && maxY > other.y
     }
+
+    public func contains(_ other: LoupeRect, tolerance: Double = 0) -> Bool {
+        guard !isEmpty, !other.isEmpty else { return false }
+        return other.x >= x - tolerance
+            && other.y >= y - tolerance
+            && other.maxX <= maxX + tolerance
+            && other.maxY <= maxY + tolerance
+    }
+
+    public func intersectionArea(with other: LoupeRect) -> Double {
+        guard intersects(other) else { return 0 }
+        let width = min(maxX, other.maxX) - max(x, other.x)
+        let height = min(maxY, other.maxY) - max(y, other.y)
+        return max(0, width) * max(0, height)
+    }
 }
 
 public struct LoupeColor: Codable, Equatable {

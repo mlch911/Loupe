@@ -25,13 +25,13 @@ xcodebuild \
 export LOUPE_INJECTOR_PATH="$(
   find "$HOME/Library/Developer/Xcode/DerivedData" \
     -path '*Debug-iphonesimulator/PackageFrameworks/LoupeInjector.framework/LoupeInjector' \
-    -print | tail -1
+    -print0 | xargs -0 ls -t | head -1
 )"
 
 APP_PATH="$(
   find "$HOME/Library/Developer/Xcode/DerivedData" \
     -path '*Debug-iphonesimulator/LoupeExample.app' \
-    -print | tail -1
+    -print0 | xargs -0 ls -td | head -1
 )"
 
 xcrun simctl boot "$DEVICE_NAME" >/dev/null 2>&1 || true

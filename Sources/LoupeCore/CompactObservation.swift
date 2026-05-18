@@ -14,6 +14,8 @@ public struct LoupeVisibleText: Codable, Equatable {
 
 public struct LoupeInteractiveElement: Codable, Equatable {
     public var ref: String
+    public var typeName: String
+    public var className: String?
     public var role: String?
     public var text: String?
     public var testID: String?
@@ -22,6 +24,8 @@ public struct LoupeInteractiveElement: Codable, Equatable {
 
     public init(
         ref: String,
+        typeName: String,
+        className: String?,
         role: String?,
         text: String?,
         testID: String?,
@@ -29,6 +33,8 @@ public struct LoupeInteractiveElement: Codable, Equatable {
         enabled: Bool
     ) {
         self.ref = ref
+        self.typeName = typeName
+        self.className = className
         self.role = role
         self.text = text
         self.testID = testID
@@ -94,9 +100,12 @@ public enum LoupeObservationCompactor {
 
         let interactive = visibleNodes
             .filter(\.isInteractive)
+            .sorted(by: interactiveOrder)
             .map { node in
                 LoupeInteractiveElement(
                     ref: node.ref,
+                    typeName: node.typeName,
+                    className: node.uiKit?.className,
                     role: node.role,
                     text: displayText(for: node),
                     testID: node.testID,
@@ -129,5 +138,17 @@ public enum LoupeObservationCompactor {
         }
 
         return lhsFrame.x < rhsFrame.x
+    }
+
+    private static func interactiveOrder(_ lhs: LoupeNode, _ rhs: LoupeNode) -> Bool {
+        if (lhs.testID != nil) != (rhs.testID != nil) {
+            return lhs.testID != nil
+        }
+
+        if (lhs.role != nil) != (rhs.role != nil) {
+            return lhs.role != nil
+        }
+
+        return visualOrder(lhs, rhs)
     }
 }

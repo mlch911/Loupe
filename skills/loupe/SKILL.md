@@ -14,6 +14,7 @@ The Homebrew package installs:
 
 - `loupe` CLI on `PATH`
 - `LoupeInjector.framework/LoupeInjector` under Homebrew `libexec`
+- AXe for low-level simulator input
 
 Do not hard-code DerivedData injector paths. Resolve the injector through Loupe:
 
@@ -46,24 +47,54 @@ After launch, fetch context from the in-app Loupe server:
 loupe fetch http://127.0.0.1:8765/observation
 loupe fetch http://127.0.0.1:8765/snapshot --output /tmp/loupe-snapshot.json
 loupe query /tmp/loupe-snapshot.json --test-id checkout.payButton
+loupe accessibility /tmp/loupe-snapshot.json
+loupe query /tmp/loupe-snapshot.json --tree accessibility --test-id checkout.payButton
+loupe inspect /tmp/loupe-snapshot.json --test-id checkout.payButton
+loupe subtree /tmp/loupe-snapshot.json --test-id checkout.form --depth 3
+loupe audit /tmp/loupe-snapshot.json
+loupe wait-for-visible --test-id checkout.payButton --timeout 5
 ```
 
-Use compact observation for LLM context. Keep full snapshots in files and query them by `testID`, text, role, or ref.
+Use compact observation for LLM context. It carries UIKit type/class identity for
+interactive elements but avoids full property dumps. Keep full snapshots in
+files, query the view tree by `testID`, text, role, or ref for UI verification,
+and use `inspect` only when the full node, style, UIKit-specific fields, or
+parent/sibling/child context is needed.
+
+Use the accessibility tree for movement and input. Selector-based actions
+already resolve there first, then fall back to the view tree only if no
+accessibility match exists.
 
 ## Actions
 
-Loupe CLI action commands are planned but not implemented yet. Do not assume
-`loupe tap`, `loupe swipe`, `loupe drag`, or `loupe type` exist.
+Loupe CLI action commands exist for runtime E2E:
 
-For now, use an XCTest/XCUITest runner to execute real simulator actions. The
-reference proof is:
+```bash
+loupe tap --test-id checkout.payButton --udid booted
+loupe tap --test-id checkout.payButton --udid booted --trace-dir /tmp/loupe-trace
+loupe drag --from 4,420 --to 360,420 --udid booted --duration 0.8
+loupe swipe --from 219,760 --to 219,190 --udid booted --width 438 --height 954
+loupe type "Ada" --udid booted
+loupe record-start
+loupe record-stop --output flow.json
+```
+
+They currently delegate low-level HID dispatch to AXe. Install AXe with
+`brew install cameroncooke/axe/axe`, or install Loupe through Homebrew so the
+formula pulls AXe in as a dependency. `loupe pinch` is intentionally not listed
+above because AXe does not support pinch yet.
+
+The product direction is runtime E2E through Loupe commands without requiring
+XCTest, `xcodebuild test`, or a UI test bundle as the public harness. The current
+legacy proof is:
 
 ```bash
 Examples/LoupeExample/run-loupe-driven-ui-test.sh
 ```
 
 That test fetches Loupe snapshots, resolves node frames, and uses
-`XCUICoordinate` for tap and drag actions.
+`XCUICoordinate` for tap and drag actions. Treat it as evidence for coordinate
+resolution, not as the target action architecture.
 
 ## Debugging
 
@@ -71,6 +102,16 @@ Run:
 
 ```bash
 loupe doctor
+```
+
+For Core unit coverage, prefer Swift Testing:
+
+```swift
+import Testing
+
+@Test func resolvesSelector() {
+    #expect(result.ref == "button")
+}
 ```
 
 If injection does not start the server:

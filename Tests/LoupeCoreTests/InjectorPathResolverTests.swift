@@ -1,18 +1,19 @@
-import XCTest
+import Foundation
+import Testing
 @testable import LoupeCore
 
-final class InjectorPathResolverTests: XCTestCase {
-    func testResolvePrefersExplicitEnvironmentPath() {
+struct InjectorPathResolverTests {
+    @Test func resolvePrefersExplicitEnvironmentPath() {
         let resolver = LoupeInjectorPathResolver(
             environment: ["LOUPE_INJECTOR_PATH": "/tmp/custom/LoupeInjector"],
             executableURL: URL(fileURLWithPath: "/opt/homebrew/Cellar/loupe/0.1.0/bin/loupe"),
             fileExists: { $0 == "/tmp/custom/LoupeInjector" }
         )
 
-        XCTAssertEqual(resolver.resolve(), "/tmp/custom/LoupeInjector")
+        #expect(resolver.resolve() == "/tmp/custom/LoupeInjector")
     }
 
-    func testResolveFindsHomebrewCellarRelativeInjector() {
+    @Test func resolveFindsHomebrewCellarRelativeInjector() {
         let expected = "/opt/homebrew/Cellar/loupe/0.1.0/libexec/LoupeInjector.framework/LoupeInjector"
         let resolver = LoupeInjectorPathResolver(
             environment: [:],
@@ -20,10 +21,10 @@ final class InjectorPathResolverTests: XCTestCase {
             fileExists: { $0 == expected }
         )
 
-        XCTAssertEqual(resolver.resolve(), expected)
+        #expect(resolver.resolve() == expected)
     }
 
-    func testResolveFallsBackToHomebrewOptPath() {
+    @Test func resolveFallsBackToHomebrewOptPath() {
         let expected = "/opt/homebrew/opt/loupe/libexec/LoupeInjector.framework/LoupeInjector"
         let resolver = LoupeInjectorPathResolver(
             environment: [:],
@@ -31,6 +32,6 @@ final class InjectorPathResolverTests: XCTestCase {
             fileExists: { $0 == expected }
         )
 
-        XCTAssertEqual(resolver.resolve(), expected)
+        #expect(resolver.resolve() == expected)
     }
 }

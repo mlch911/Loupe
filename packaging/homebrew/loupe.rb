@@ -6,6 +6,7 @@ class Loupe < Formula
   license "MIT"
   head "https://github.com/loupe-dev/loupe.git", branch: "main"
 
+  depends_on "cameroncooke/axe/axe"
   depends_on xcode: ["16.0", :build]
 
   def install

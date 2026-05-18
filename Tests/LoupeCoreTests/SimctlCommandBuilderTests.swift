@@ -1,8 +1,8 @@
-import XCTest
+import Testing
 @testable import LoupeCore
 
-final class SimctlCommandBuilderTests: XCTestCase {
-    func testLaunchArgumentsPutDeviceBeforeBundleID() {
+struct SimctlCommandBuilderTests {
+    @Test func launchArgumentsPutDeviceBeforeBundleID() {
         let request = SimctlLaunchRequest(
             device: "booted",
             bundleID: "com.example.App",
@@ -12,9 +12,8 @@ final class SimctlCommandBuilderTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(
-            SimctlCommandBuilder.launchArguments(for: request),
-            [
+        #expect(
+            SimctlCommandBuilder.launchArguments(for: request) == [
                 "simctl",
                 "launch",
                 "booted",
@@ -23,7 +22,7 @@ final class SimctlCommandBuilderTests: XCTestCase {
         )
     }
 
-    func testLaunchEnvironmentUsesSIMCTLChildPrefix() {
+    @Test func launchEnvironmentUsesSIMCTLChildPrefix() {
         let request = SimctlLaunchRequest(
             bundleID: "com.example.App",
             environment: [
@@ -31,9 +30,8 @@ final class SimctlCommandBuilderTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(
-            SimctlCommandBuilder.launchEnvironment(for: request, inheriting: [:]),
-            [
+        #expect(
+            SimctlCommandBuilder.launchEnvironment(for: request, inheriting: [:]) == [
                 "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES": "/tmp/libProbe.dylib",
             ]
         )

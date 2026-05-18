@@ -122,12 +122,93 @@ public final class LoupeServer: @unchecked Sendable {
         switch request.path {
         case "/health":
             return ResponsePayload(status: 200, body: #"{"status":"ok","name":"LoupeKit"}"#)
+        case "/runtime":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.runtimeState())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("runtime_encoding_failed", error: error))
+            }
+        case "/logs":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.runtimeLogs())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("logs_encoding_failed", error: error))
+            }
+        case "/recording":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.currentRecording())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("recording_encoding_failed", error: error))
+            }
+        case "/recording/start":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.startRecording())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("recording_start_failed", error: error))
+            }
+        case "/recording/stop":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.stopRecording())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("recording_stop_failed", error: error))
+            }
         case "/snapshot":
             do {
                 let data = try makeLoupeJSONEncoder().encode(LoupeAgent().captureSnapshot())
                 return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
             } catch {
                 return ResponsePayload(status: 500, body: errorBody("snapshot_encoding_failed", error: error))
+            }
+        case "/accessibility":
+            do {
+                let snapshot = LoupeAgent().captureSnapshot()
+                let tree = LoupeAccessibilityTree.build(from: snapshot)
+                let data = try makeLoupeJSONEncoder().encode(tree)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("accessibility_encoding_failed", error: error))
+            }
+        case "/inspect":
+            do {
+                let snapshot = LoupeAgent().captureSnapshot()
+                guard let selector = selector(from: request.queryItems) else {
+                    return ResponsePayload(status: 400, body: #"{"error":"missing_selector"}"#)
+                }
+                guard let inspection = LoupeSnapshotInspector.inspect(selector, in: snapshot) else {
+                    return ResponsePayload(status: 404, body: #"{"error":"node_not_found"}"#)
+                }
+                let data = try makeLoupeJSONEncoder().encode(inspection)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("inspect_encoding_failed", error: error))
+            }
+        case "/subtree":
+            do {
+                let snapshot = LoupeAgent().captureSnapshot()
+                guard let selector = selector(from: request.queryItems) else {
+                    return ResponsePayload(status: 400, body: #"{"error":"missing_selector"}"#)
+                }
+                let depth = request.queryItems["depth"].flatMap(Int.init) ?? 2
+                guard let subtree = LoupeSnapshotInspector.subtree(selector, in: snapshot, maxDepth: depth) else {
+                    return ResponsePayload(status: 404, body: #"{"error":"node_not_found"}"#)
+                }
+                let data = try makeLoupeJSONEncoder().encode(subtree)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("subtree_encoding_failed", error: error))
+            }
+        case "/audit":
+            do {
+                let audit = LoupeLayoutAuditor.audit(LoupeAgent().captureSnapshot())
+                let data = try makeLoupeJSONEncoder().encode(audit)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("audit_encoding_failed", error: error))
             }
         case "/observation":
             do {
@@ -184,6 +265,22 @@ public final class LoupeServer: @unchecked Sendable {
             .replacingOccurrences(of: "\n", with: "\\n")
         return #"{"error":""# + code + #"","message":""# + message + #""}"#
     }
+
+    private func selector(from queryItems: [String: String]) -> LoupeSelector? {
+        if let testID = queryItems["testID"] ?? queryItems["test-id"] {
+            return .testID(testID)
+        }
+        if let ref = queryItems["ref"] {
+            return .ref(ref)
+        }
+        if let text = queryItems["text"] {
+            return .text(text, exact: false)
+        }
+        if let role = queryItems["role"] {
+            return .role(role)
+        }
+        return nil
+    }
 }
 
 public enum LoupeServerError: Error, Equatable {
@@ -204,6 +301,7 @@ private struct ResponsePayload: Sendable {
 private struct HTTPRequest: Sendable {
     var method: String
     var path: String
+    var queryItems: [String: String]
 
     init(data: Data) {
         let text = String(decoding: data, as: UTF8.self)
@@ -212,10 +310,21 @@ private struct HTTPRequest: Sendable {
             .first ?? ""
         let parts = requestLine.split(separator: " ")
         method = parts.indices.contains(0) ? String(parts[0]) : "GET"
-        path = parts.indices.contains(1) ? String(parts[1]) : "/"
+        let rawPath = parts.indices.contains(1) ? String(parts[1]) : "/"
 
-        if let queryIndex = path.firstIndex(of: "?") {
-            path = String(path[..<queryIndex])
+        if let components = URLComponents(string: rawPath) {
+            path = components.path
+            queryItems = Dictionary(
+                uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+                    item.value.map { (item.name, $0) }
+                }
+            )
+        } else {
+            path = rawPath
+            queryItems = [:]
+            if let queryIndex = path.firstIndex(of: "?") {
+                path = String(path[..<queryIndex])
+            }
         }
     }
 }

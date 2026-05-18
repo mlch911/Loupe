@@ -4,8 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 DEVICE="${LOUPE_DEVICE:-booted}"
 PORT="${LOUPE_PORT:-8765}"
+BACKEND="${LOUPE_ACTION_BACKEND:-axe}"
 
 cd "$ROOT_DIR"
+
+if ! command -v axe >/dev/null 2>&1; then
+  echo "error: runtime E2E requires axe on PATH" >&2
+  echo "hint: brew install cameroncooke/axe/axe" >&2
+  exit 2
+fi
 
 if ! xcrun simctl list devices booted | grep -q Booted; then
   FIRST_DEVICE="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
@@ -51,10 +58,41 @@ xcrun simctl terminate "$DEVICE" dev.loupe.example >/dev/null 2>&1 || true
 
 sleep 2
 
-curl -sS "http://127.0.0.1:$PORT/health"
-echo
+HOST="http://127.0.0.1:$PORT"
+SNAPSHOT_PATH="/tmp/loupe-runtime-snapshot.json"
+RECORDING_PATH="/tmp/loupe-runtime-recording.json"
+SCREENSHOT_PATH="/tmp/loupe-runtime-screen.png"
 
-SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
-curl -sS "http://127.0.0.1:$PORT/snapshot" > "$SNAPSHOT_PATH"
+curl -sS "$HOST/health" | grep -q LoupeKit
+curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
+grep -q '"uiKit"' "$SNAPSHOT_PATH"
+grep -q '"accessibility"' "$SNAPSHOT_PATH"
 
-.build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList
+.build/debug/loupe record-start --host "$HOST" >/tmp/loupe-record-start.json
+
+.build/debug/loupe tap \
+  --host "$HOST" \
+  --backend "$BACKEND" \
+  --udid "$DEVICE" \
+  --test-id example.customer.1
+
+sleep 1
+
+curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
+.build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.detail >/tmp/loupe-runtime-detail-query.json
+
+.build/debug/loupe screenshot \
+  --udid "$DEVICE" \
+  --output "$SCREENSHOT_PATH"
+
+.build/debug/loupe record-stop \
+  --host "$HOST" \
+  --output "$RECORDING_PATH"
+
+grep -q '"events"' "$RECORDING_PATH"
+grep -q '"kind" : "touch"' "$RECORDING_PATH"
+
+echo "runtime E2E smoke passed"
+echo "snapshot: $SNAPSHOT_PATH"
+echo "recording: $RECORDING_PATH"
+echo "screenshot: $SCREENSHOT_PATH"
