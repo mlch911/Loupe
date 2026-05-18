@@ -19,17 +19,19 @@ struct LoupeCLI {
         case "fetch":
             try await fetch(arguments)
         case "logs":
-            try await runtimeFetch(arguments, path: "/logs", usage: "loupe logs [--host <url>] [--output <path>]")
+            try await runtimeFetch(arguments, path: "/logs", usage: "loupe logs [--host <url>] [--udid <sim>] [--output <path>]")
         case "injector-path":
             try injectorPath(arguments)
         case "inspect":
             try inspect(arguments)
         case "recording":
-            try await runtimeFetch(arguments, path: "/recording", usage: "loupe recording [--host <url>] [--output <path>]")
+            try await runtimeFetch(arguments, path: "/recording", usage: "loupe recording [--host <url>] [--udid <sim>] [--output <path>]")
         case "record-start":
-            try await runtimeFetch(arguments, path: "/recording/start", usage: "loupe record-start [--host <url>] [--output <path>]")
+            try await runtimeFetch(arguments, path: "/recording/start", usage: "loupe record-start [--host <url>] [--udid <sim>] [--output <path>]")
         case "record-stop":
-            try await runtimeFetch(arguments, path: "/recording/stop", usage: "loupe record-stop [--host <url>] [--output <path>]")
+            try await runtimeFetch(arguments, path: "/recording/stop", usage: "loupe record-stop [--host <url>] [--udid <sim>] [--output <path>]")
+        case "runtime":
+            try await runtimeFetch(arguments, path: "/runtime", usage: "loupe runtime [--host <url>] [--udid <sim>] [--output <path>]")
         case "query":
             try query(arguments)
         case "launch":
@@ -301,7 +303,7 @@ struct LoupeCLI {
               fetch <url> [--output <path>]
                   Fetch a probe endpoint such as http://127.0.0.1:8765/observation.
 
-              logs [--host <url>] [--output <path>]
+              logs [--host <url>] [--udid <sim>] [--output <path>]
                   Fetch runtime logs emitted by the injected Loupe SDK.
 
               injector-path
@@ -340,7 +342,10 @@ struct LoupeCLI {
               screenshot --udid <sim> --output <path>
                   Capture a simulator screenshot through simctl.
 
-              record-start|record-stop|recording [--host <url>] [--output <path>]
+              runtime [--host <url>] [--udid <sim>] [--output <path>]
+                  Fetch injected SDK runtime identity, recording state, and logs.
+
+              record-start|record-stop|recording [--host <url>] [--udid <sim>] [--output <path>]
                   Control and fetch the injected SDK touch recorder.
 
               replay <recording.json> --udid <sim>
@@ -351,6 +356,9 @@ struct LoupeCLI {
 
     private static func runtimeFetch(_ arguments: [String], path: String, usage: String) async throws {
         let options = try RuntimeFetchOptions(arguments, usage: usage)
+        if let udid = options.udid {
+            try await validateRuntimeIdentity(host: options.host, expectedUDID: udid)
+        }
         let url = options.host.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -526,6 +534,31 @@ struct LoupeCLI {
             return try JSONDecoder().decode(LoupeAccessibilityTree.self, from: data)
         } catch {
             return LoupeAccessibilityTree.build(from: fallbackSnapshot)
+        }
+    }
+
+    private static func fetchRuntimeState(host: URL) async throws -> LoupeRuntimeState {
+        let url = host.appendingPathComponent("runtime")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+            throw CLIError("runtime fetch failed")
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(LoupeRuntimeState.self, from: data)
+    }
+
+    private static func validateRuntimeIdentity(host: URL, expectedUDID: String) async throws {
+        let expected = try resolvedBackendUDID(expectedUDID)
+        let state = try await fetchRuntimeState(host: host)
+        guard let actual = state.identity.simulatorUDID, !actual.isEmpty else {
+            throw CLIError("Loupe runtime did not report SIMULATOR_UDID; cannot validate --udid \(expected)")
+        }
+        guard actual == expected else {
+            let bundle = state.identity.bundleIdentifier ?? "unknown-bundle"
+            throw CLIError(
+                "Loupe runtime at \(host.absoluteString) is \(bundle) on simulator \(actual), not requested --udid \(expected)"
+            )
         }
     }
 
@@ -1564,10 +1597,12 @@ private struct ReplayOptions {
 
 private struct RuntimeFetchOptions {
     var host: URL
+    var udid: String?
     var outputURL: URL?
 
     init(_ arguments: [String], usage: String) throws {
         host = URL(string: "http://127.0.0.1:8765")!
+        var udid: String?
         var outputURL: URL?
         var index = 0
         while index < arguments.count {
@@ -1578,6 +1613,8 @@ private struct RuntimeFetchOptions {
                     throw CLIError("Invalid --host URL: \(raw)")
                 }
                 host = url
+            case "--udid", "--device":
+                udid = try Self.value(after: arguments[index], in: arguments, index: &index)
             case "--output":
                 outputURL = URL(fileURLWithPath: try Self.value(after: "--output", in: arguments, index: &index))
             case "--help", "-h":
@@ -1587,6 +1624,7 @@ private struct RuntimeFetchOptions {
             }
             index += 1
         }
+        self.udid = udid
         self.outputURL = outputURL
     }
 

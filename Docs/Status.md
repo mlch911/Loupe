@@ -83,9 +83,15 @@ compose.
   selectable without relying on private class-name string matching.
 - `LoupeKit` exposes runtime endpoints for logs and touch recording:
   `/logs`, `/runtime`, `/recording/start`, `/recording/stop`, and `/recording`.
+- `/runtime` includes a launch identity with bundle id, process id,
+  `SIMULATOR_UDID`, simulator name, and a Loupe launch id. Recordings persist
+  that identity as `appIdentity`.
 - `loupe tap`, `swipe`, `drag`, `pinch`, `type`, `screenshot`, `record-start`,
   `record-stop`, `recording`, `logs`, and `replay` are available as CLI
   commands.
+- `loupe runtime`, `logs`, `record-start`, `record-stop`, and `recording` accept
+  `--udid` and validate that the connected Loupe host belongs to that simulator
+  before mutating or reading runtime recorder state.
 - Runtime actions currently delegate HID dispatch to AXe.
 - Selector-based runtime actions resolve through the accessibility tree first,
   using a valid accessibility activation point when it lies inside the element

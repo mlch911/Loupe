@@ -4,10 +4,19 @@ import Testing
 
 struct RuntimeTests {
     @Test func recordingRoundTripsThroughJSON() throws {
+        let identity = LoupeRuntimeIdentity(
+            launchID: "launch-1",
+            startedAt: Date(timeIntervalSince1970: 0),
+            bundleIdentifier: "dev.loupe.example",
+            processIdentifier: 123,
+            simulatorUDID: "SIM-1",
+            simulatorName: "iPhone"
+        )
         let recording = LoupeRecording(
             id: "recording-1",
             startedAt: Date(timeIntervalSince1970: 1),
             endedAt: Date(timeIntervalSince1970: 2),
+            appIdentity: identity,
             events: [
                 LoupeRuntimeEvent(
                     id: "event-1",
@@ -28,6 +37,7 @@ struct RuntimeTests {
         let decoded = try decoder.decode(LoupeRecording.self, from: data)
 
         #expect(decoded == recording)
+        #expect(decoded.appIdentity?.simulatorUDID == "SIM-1")
     }
 
     @Test func snapshotNodeCanCarryUIKitAndAccessibilityProperties() {

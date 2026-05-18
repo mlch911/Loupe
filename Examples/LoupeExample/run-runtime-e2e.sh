@@ -62,13 +62,16 @@ HOST="http://127.0.0.1:$PORT"
 SNAPSHOT_PATH="/tmp/loupe-runtime-snapshot.json"
 RECORDING_PATH="/tmp/loupe-runtime-recording.json"
 SCREENSHOT_PATH="/tmp/loupe-runtime-screen.png"
+RUNTIME_PATH="/tmp/loupe-runtime-state.json"
 
 curl -sS "$HOST/health" | grep -q LoupeKit
+.build/debug/loupe runtime --host "$HOST" --udid "$DEVICE" > "$RUNTIME_PATH"
+grep -q '"simulatorUDID"' "$RUNTIME_PATH"
 curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
 grep -q '"uiKit"' "$SNAPSHOT_PATH"
 grep -q '"accessibility"' "$SNAPSHOT_PATH"
 
-.build/debug/loupe record-start --host "$HOST" >/tmp/loupe-record-start.json
+.build/debug/loupe record-start --host "$HOST" --udid "$DEVICE" >/tmp/loupe-record-start.json
 
 .build/debug/loupe tap \
   --host "$HOST" \
@@ -87,12 +90,16 @@ curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
 
 .build/debug/loupe record-stop \
   --host "$HOST" \
+  --udid "$DEVICE" \
   --output "$RECORDING_PATH"
 
 grep -q '"events"' "$RECORDING_PATH"
 grep -q '"kind" : "touch"' "$RECORDING_PATH"
+grep -q '"appIdentity"' "$RECORDING_PATH"
+grep -q '"simulatorUDID"' "$RECORDING_PATH"
 
 echo "runtime E2E smoke passed"
+echo "runtime: $RUNTIME_PATH"
 echo "snapshot: $SNAPSHOT_PATH"
 echo "recording: $RECORDING_PATH"
 echo "screenshot: $SCREENSHOT_PATH"

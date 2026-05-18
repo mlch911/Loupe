@@ -35,6 +35,9 @@ harness.
   `/subtree?testID=<id>&depth=<n>`
 - Runtime waiting:
   `loupe wait-for-visible --test-id <id> --timeout <seconds>`
+- Runtime identity handshake:
+  `loupe runtime --udid <sim>` verifies that the contacted Loupe host belongs to
+  the expected simulator before recorder commands use it.
 - Basic action traces:
   `--trace-dir <path>` saves before/after view snapshots, accessibility trees,
   runtime logs, screenshots, action records, and the resolved target query result

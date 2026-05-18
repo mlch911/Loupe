@@ -9,17 +9,26 @@ import UIKit
 public final class LoupeRuntime {
     public static let shared = LoupeRuntime()
 
+    public let identity: LoupeRuntimeIdentity
     private var recording: LoupeRecording?
     private var completedRecording: LoupeRecording?
     private var logs: [LoupeRuntimeLog] = []
     private var overlayWindow: UIWindow?
     private var didInstallEventHook = false
 
-    private init() {}
+    private init() {
+        let environment = ProcessInfo.processInfo.environment
+        identity = LoupeRuntimeIdentity(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier,
+            simulatorUDID: environment["SIMULATOR_UDID"],
+            simulatorName: environment["SIMULATOR_DEVICE_NAME"]
+        )
+    }
 
     public func startRecording(showControls: Bool = true) -> LoupeRecording {
         installEventHookIfNeeded()
-        let recording = LoupeRecording()
+        let recording = LoupeRecording(appIdentity: identity)
         self.recording = recording
         completedRecording = nil
         log(level: "info", "recording_started", metadata: ["id": .string(recording.id)])
@@ -46,7 +55,7 @@ public final class LoupeRuntime {
     }
 
     public func runtimeState() -> LoupeRuntimeState {
-        LoupeRuntimeState(recording: recording ?? completedRecording, logs: logs)
+        LoupeRuntimeState(identity: identity, recording: recording ?? completedRecording, logs: logs)
     }
 
     public func currentRecording() -> LoupeRecording? {
