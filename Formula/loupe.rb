@@ -14,6 +14,7 @@ class Loupe < Formula
       "--product", "loupe"
 
     bin.install ".build/release/loupe"
+    (share/"loupe/skills").install "skills/loupe" => "loupe"
 
     simulator_triple = Hardware::CPU.arm? ? "arm64-apple-ios15.0-simulator" : "x86_64-apple-ios15.0-simulator"
     simulator_sdk = Utils.safe_popen_read("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").strip

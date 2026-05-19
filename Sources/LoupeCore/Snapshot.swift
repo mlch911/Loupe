@@ -359,6 +359,8 @@ public struct LoupeNode: Codable, Equatable {
     public var value: String?
     public var placeholder: String?
     public var text: String?
+    public var renderedText: String?
+    public var semanticText: String?
     public var frame: LoupeRect?
     public var isVisible: Bool
     public var isEnabled: Bool
@@ -381,6 +383,8 @@ public struct LoupeNode: Codable, Equatable {
         value: String? = nil,
         placeholder: String? = nil,
         text: String? = nil,
+        renderedText: String? = nil,
+        semanticText: String? = nil,
         frame: LoupeRect? = nil,
         isVisible: Bool,
         isEnabled: Bool,
@@ -402,6 +406,8 @@ public struct LoupeNode: Codable, Equatable {
         self.value = value
         self.placeholder = placeholder
         self.text = text
+        self.renderedText = renderedText
+        self.semanticText = semanticText
         self.frame = frame
         self.isVisible = isVisible
         self.isEnabled = isEnabled

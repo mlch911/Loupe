@@ -131,6 +131,10 @@ public struct LoupeMutationResponse: Codable, Equatable {
     public var before: LoupeNode
     public var after: LoupeNode
     public var hierarchy: LoupeMutationHierarchyContext?
+    public var requested: LoupeMutationValue?
+    public var effective: LoupeMutationValue?
+    public var changed: Bool?
+    public var warning: String?
     public var snapshotID: String
 
     public init(
@@ -141,6 +145,10 @@ public struct LoupeMutationResponse: Codable, Equatable {
         before: LoupeNode,
         after: LoupeNode,
         hierarchy: LoupeMutationHierarchyContext? = nil,
+        requested: LoupeMutationValue? = nil,
+        effective: LoupeMutationValue? = nil,
+        changed: Bool? = nil,
+        warning: String? = nil,
         snapshotID: String
     ) {
         self.property = property
@@ -150,6 +158,10 @@ public struct LoupeMutationResponse: Codable, Equatable {
         self.before = before
         self.after = after
         self.hierarchy = hierarchy
+        self.requested = requested
+        self.effective = effective
+        self.changed = changed
+        self.warning = warning
         self.snapshotID = snapshotID
     }
 }

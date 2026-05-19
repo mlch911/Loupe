@@ -1,3 +1,8 @@
+---
+name: loupe
+description: Use this skill when working with iOS Simulator UI automation, Loupe runtime injection, view-tree inspection, accessibility tree querying, compact screen context, or Loupe CLI-driven simulator actions.
+---
+
 # Loupe
 
 Use this skill when working with iOS Simulator UI automation, view-tree inspection, compact screen context, or Loupe injection.
@@ -63,10 +68,15 @@ When using Loupe as an agent skill, follow this order:
 
 ```bash
 loupe runtimes
+loupe use com.example.App
+loupe current
 loupe tree --udid booted --accessibility --depth 3
 loupe tree --udid booted --view --depth 3
+loupe tree --bundle-id com.example.App --interesting
+loupe tree --bundle-id com.example.App --text --accessibility
 loupe fetch http://127.0.0.1:8765/snapshot --output /tmp/loupe-snapshot.json
 loupe inspect /tmp/loupe-snapshot.json --test-id target.id
+loupe mutations --ref n21
 loupe tap --test-id target.id --udid booted --trace-dir /tmp/loupe-trace --expect-visible next.id
 loupe trace-summary /tmp/loupe-trace
 loupe diff /tmp/loupe-trace/before-snapshot.json /tmp/loupe-trace/after-snapshot.json
@@ -81,6 +91,30 @@ loupe cleanup --dry-run
 The skill path should keep model context small: use `tree` and `compact` first,
 then inspect specific refs or test IDs. Avoid pasting full snapshots into the
 prompt unless the user explicitly asks for raw data.
+
+When multiple apps are injected, select the active runtime before probing:
+
+```bash
+loupe runtimes
+loupe use <bundle-id>
+loupe current
+```
+
+Prefer `--bundle-id <id>` on `tree`, `query`, `set`, and `mutations` when the
+target app is known. Do not keep retrying the default `http://127.0.0.1:8765`
+after a timeout if `loupe runtimes` shows the app on another host.
+
+For deep system apps, a low depth can show only containers. If `--depth 3`
+only shows container nodes, retry depth 6-8, or switch to:
+
+```bash
+loupe tree --accessibility --text
+loupe tree --interesting
+loupe tree --visible-leaves
+```
+
+Use the accessibility tree for text discovery and tap targets. Use the view
+tree plus `inspect` for mutation refs, UIKit class names, style, and layout.
 
 ## Actions
 

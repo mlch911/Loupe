@@ -64,11 +64,11 @@ struct LoupeCLI {
         case "runtime":
             try await runtimeFetch(arguments, path: "/runtime", usage: "loupe runtime [--host <url>] [--udid <sim>] [--output <path>]")
         case "mutations":
-            try await runtimeFetch(arguments, path: "/mutations", usage: "loupe mutations [--host <url>] [--udid <sim>] [--output <path>]")
+            try await mutations(arguments)
         case "set", "mutate":
             try await set(arguments)
         case "query":
-            try query(arguments)
+            try await query(arguments)
         case "launch":
             try await launch(arguments)
         case "replay":
@@ -83,6 +83,12 @@ struct LoupeCLI {
             try subtree(arguments)
         case "tree":
             try await tree(arguments)
+        case "use":
+            try await use(arguments)
+        case "current":
+            try await current(arguments)
+        case "text-map":
+            try await tree(arguments + ["--text"])
         case "trace-summary":
             try traceSummary(arguments)
         case "tap", "swipe", "drag", "pinch", "type":
@@ -120,12 +126,26 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func query(_ arguments: [String]) throws {
+    private static func query(_ arguments: [String]) async throws {
         let options = try QueryOptions(arguments)
-        let data = try Data(contentsOf: options.snapshotURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let snapshot = try decoder.decode(LoupeSnapshot.self, from: data)
+        let snapshot: LoupeSnapshot
+        if let snapshotURL = options.snapshotURL {
+            let data = try Data(contentsOf: snapshotURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            snapshot = try decoder.decode(LoupeSnapshot.self, from: data)
+        } else {
+            let host = try await resolvedRuntimeHost(
+                requestedHost: options.host,
+                hostWasExplicit: options.hostWasExplicit,
+                udid: options.udid,
+                bundleID: options.bundleID
+            )
+            if let udid = options.udid {
+                try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
+            }
+            snapshot = try await fetchSnapshot(host: host, timeout: options.timeout)
+        }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -234,7 +254,8 @@ struct LoupeCLI {
             let host = try await resolvedRuntimeHost(
                 requestedHost: options.host,
                 hostWasExplicit: options.hostWasExplicit,
-                udid: options.udid
+                udid: options.udid,
+                bundleID: options.bundleID
             )
             if let udid = options.udid {
                 try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
@@ -248,13 +269,20 @@ struct LoupeCLI {
         let output: String
         switch options.tree {
         case .view:
-            output = renderViewTree(snapshot, selector: options.selector, depth: options.depth, includeHidden: options.includeHidden)
+            output = renderViewTree(
+                snapshot,
+                selector: options.selector,
+                depth: options.depth,
+                includeHidden: options.includeHidden,
+                presentation: options.presentation
+            )
         case .accessibility:
             output = renderAccessibilityTree(
                 accessibilityTree ?? LoupeAccessibilityTree.build(from: snapshot, includeHidden: options.includeHidden),
                 selector: options.selector,
                 depth: options.depth,
-                includeHidden: options.includeHidden
+                includeHidden: options.includeHidden,
+                presentation: options.presentation
             )
         }
         print(output)
@@ -539,6 +567,7 @@ struct LoupeCLI {
         if let runtimeUDID, let runtimeHost {
             try await waitForRuntime(host: runtimeHost, expectedUDID: runtimeUDID, timeout: options.timeout)
             try storeRuntimeHost(udid: runtimeUDID, bundleID: options.bundleID, host: runtimeHost)
+            try storeCurrentRuntimeHost(LoupeRuntimeHostRecord(udid: runtimeUDID, bundleID: options.bundleID, host: runtimeHost.absoluteString, updatedAt: Date()))
             print("loupe host: \(runtimeHost.absoluteString)")
         }
     }
@@ -644,6 +673,12 @@ struct LoupeCLI {
               runtimes|apps [--json]
                   List known injected Loupe runtimes, hosts, bundles, and live status.
 
+              use <bundle-id> | use --host <url>
+                  Set the current Loupe runtime used when --host, --udid, and --bundle-id are omitted.
+
+              current [--json]
+                  Print the current Loupe runtime selection.
+
               injector-path
                   Print the LoupeInjector executable path used for simulator injection.
 
@@ -653,8 +688,14 @@ struct LoupeCLI {
               subtree <snapshot.json> (--test-id <id> | --ref <ref> | --text <text> | --role <role>) [--depth <n>]
                   Print a bounded subtree rooted at a matched node.
 
-              tree [snapshot.json] [--host <url>] [--udid <sim>] [--view|--accessibility] [--depth <n>]
+              tree [snapshot.json] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--view|--accessibility] [--depth <n>]
                   Print a human-readable view or accessibility tree prefix.
+
+              tree --interesting|--visible-leaves|--text|--mutable
+                  Print discovery-focused tree slices for deep or container-heavy screens.
+
+              text-map [snapshot.json] [--accessibility]
+                  Print visible text-bearing nodes.
 
               trace-summary <trace-dir> [--json] [--limit <n>]
                   Summarize an action trace bundle, including target, errors, logs, and snapshot diff.
@@ -662,14 +703,17 @@ struct LoupeCLI {
               audit <snapshot.json> [--tolerance <points>] [--min-overlap-area <points2>]
                   Report layout, target-size, testID, and contrast issues.
 
-              query <snapshot.json> (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--tree view|accessibility]
+              query [snapshot.json] (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--bundle-id <id>] [--tree view|accessibility]
                   Query a full snapshot view tree or derived accessibility tree.
 
-              set (--test-id <id> | --ref <ref>) <property> <value> [--udid <sim>]
+              set (--test-id <id> | --ref <ref>) <property> <value> [--udid <sim>] [--bundle-id <id>]
                   Mutate a supported UIKit view property through the injected runtime.
 
-              set --list | mutations [--host <url>] [--udid <sim>]
+              set --list | mutations [--host <url>] [--udid <sim>] [--bundle-id <id>]
                   List runtime-supported UIKit mutation properties and aliases.
+
+              mutations (--ref <ref> | --text <text> | --test-id <id>)
+                  Print mutation properties that are useful for one matched node.
 
               reflect <mutation-response.json> --source <dir> [--output <path>]
                   Summarize a runtime mutation with hierarchy context and source candidates.
@@ -733,11 +777,97 @@ struct LoupeCLI {
         try write(data: data, outputURL: options.outputURL)
     }
 
+    private static func use(_ arguments: [String]) async throws {
+        let options = try RuntimeUseOptions(arguments)
+        let record: LoupeRuntimeHostRecord
+        if let host = options.host {
+            let state = try await fetchRuntimeState(host: host, timeout: options.timeout)
+            let udid = state.identity.simulatorUDID ?? options.udid ?? "unknown"
+            let bundleID = state.identity.bundleIdentifier ?? options.bundleID ?? "unknown"
+            record = LoupeRuntimeHostRecord(udid: udid, bundleID: bundleID, host: host.absoluteString, updatedAt: Date())
+        } else if let bundleID = options.bundleID {
+            record = try await runtimeHostRecord(bundleID: bundleID, udid: options.udid, timeout: options.timeout)
+        } else {
+            throw CLIError("Usage: loupe use <bundle-id> | --bundle-id <id> | --host <url> [--udid <sim>]")
+        }
+        try storeCurrentRuntimeHost(record)
+        print("current \(record.bundleID) \(record.host) udid=\(record.udid)")
+    }
+
+    private static func current(_ arguments: [String]) async throws {
+        let options = try RuntimeCurrentOptions(arguments)
+        guard let record = try loadCurrentRuntimeHost() else {
+            throw CLIError("No current Loupe runtime. Run `loupe use <bundle-id>` or `loupe use --host <url>`.")
+        }
+        var live = false
+        if let host = URL(string: record.host),
+           let state = try? await fetchRuntimeState(host: host, timeout: options.timeout) {
+            live = runtimeState(state, matches: record)
+        }
+        if options.json {
+            let row = RuntimeListRow(
+                udid: record.udid,
+                simulator: "",
+                bundleID: record.bundleID,
+                host: record.host,
+                pid: "",
+                live: live,
+                startedAt: "",
+                updatedAt: isoString(record.updatedAt)
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            FileHandle.standardOutput.write(try encoder.encode(row))
+            FileHandle.standardOutput.write(Data("\n".utf8))
+            return
+        }
+        print("bundle\t host\tudid\tlive\tupdatedAt")
+        print("\(record.bundleID)\t\(record.host)\t\(record.udid)\t\(live ? "yes" : "no")\t\(isoString(record.updatedAt))")
+    }
+
+    private static func mutations(_ arguments: [String]) async throws {
+        let options = try MutationListOptions(arguments)
+        guard let selector = options.selector else {
+            try await runtimeFetch(
+                arguments,
+                path: "/mutations",
+                usage: "loupe mutations [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
+            return
+        }
+
+        let host = try await resolvedRuntimeHost(
+            requestedHost: options.host,
+            hostWasExplicit: options.hostWasExplicit,
+            udid: options.udid,
+            bundleID: options.bundleID
+        )
+        if let udid = options.udid {
+            try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
+        }
+        let snapshot = try await fetchSnapshot(host: host, timeout: options.timeout)
+        let matches = LoupeSnapshotQuery.find(
+            selector,
+            in: snapshot,
+            options: LoupeQueryOptions(includeHidden: options.includeHidden, includeDisabled: true, maxResults: 20)
+        )
+        guard let result = matches.first, let node = snapshot.nodes[result.ref] else {
+            throw CLIError("No view node matched selector")
+        }
+        let output = renderNodeMutationCapabilities(node)
+        if let outputURL = options.outputURL {
+            try Data((output + "\n").utf8).write(to: outputURL)
+        } else {
+            print(output)
+        }
+    }
+
     private static func runtimeData(path: String, options: RuntimeFetchOptions) async throws -> Data {
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
             hostWasExplicit: options.hostWasExplicit,
-            udid: options.udid
+            udid: options.udid,
+            bundleID: options.bundleID
         )
         if let udid = options.udid {
             try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
@@ -772,7 +902,8 @@ struct LoupeCLI {
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
             hostWasExplicit: options.hostWasExplicit,
-            udid: options.udid
+            udid: options.udid,
+            bundleID: options.bundleID
         )
         if let udid = options.udid {
             try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
@@ -1346,20 +1477,59 @@ struct LoupeCLI {
     private static func resolvedRuntimeHost(
         requestedHost: URL,
         hostWasExplicit: Bool,
-        udid: String?
+        udid: String?,
+        bundleID: String? = nil
     ) async throws -> URL {
-        guard !hostWasExplicit, let udid else {
+        guard !hostWasExplicit else {
             return requestedHost
         }
 
-        let resolvedUDID = try resolvedBackendUDID(udid)
-        if let record = try loadRuntimeHost(udid: resolvedUDID),
-           let url = URL(string: record.host),
-           !record.host.isEmpty {
+        if let bundleID {
+            let record = try await runtimeHostRecord(bundleID: bundleID, udid: udid, timeout: 1)
+            guard let url = URL(string: record.host), !record.host.isEmpty else {
+                throw CLIError("Stored Loupe runtime for \(bundleID) has an invalid host.")
+            }
+            return url
+        }
+
+        if let udid {
+            let resolvedUDID = try resolvedBackendUDID(udid)
+            if let record = try loadRuntimeHost(udid: resolvedUDID),
+               let url = URL(string: record.host),
+               !record.host.isEmpty {
+                return url
+            }
+        }
+
+        if requestedHost.absoluteString == "http://127.0.0.1:8765",
+           let current = try loadCurrentRuntimeHost(),
+           let url = URL(string: current.host),
+           !current.host.isEmpty {
             return url
         }
 
         return requestedHost
+    }
+
+    private static func runtimeHostRecord(bundleID: String, udid: String?, timeout: TimeInterval) async throws -> LoupeRuntimeHostRecord {
+        let resolvedUDID = try udid.map(resolvedBackendUDID)
+        let records = try loadRuntimeHostRecords()
+            .filter { record in
+                record.bundleID == bundleID && (resolvedUDID == nil || record.udid == resolvedUDID)
+            }
+        guard !records.isEmpty else {
+            throw CLIError("No stored Loupe runtime for bundle \(bundleID). Run `loupe runtimes` or launch with `loupe start --bundle-id \(bundleID)`.")
+        }
+        for record in records {
+            guard let host = URL(string: record.host) else {
+                continue
+            }
+            if let state = try? await fetchRuntimeState(host: host, timeout: timeout),
+               runtimeState(state, matches: record) {
+                return record
+            }
+        }
+        return records[0]
     }
 
     private static func resolvedLoupePort(for udid: String, environment: [String: String]) throws -> UInt16 {
@@ -1450,6 +1620,10 @@ struct LoupeCLI {
         runtimeHostDirectory().appendingPathComponent("\(udid).json")
     }
 
+    private static func currentRuntimeHostURL() -> URL {
+        runtimeHostDirectory().appendingPathComponent("current.json")
+    }
+
     private static func storeRuntimeHost(udid: String, bundleID: String, host: URL) throws {
         let directory = runtimeHostDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1459,6 +1633,25 @@ struct LoupeCLI {
 
     private static func loadRuntimeHost(udid: String) throws -> LoupeRuntimeHostRecord? {
         let url = runtimeHostRecordURL(udid: udid)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(LoupeRuntimeHostRecord.self, from: data)
+    }
+
+    private static func storeCurrentRuntimeHost(_ record: LoupeRuntimeHostRecord) throws {
+        let directory = runtimeHostDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var updatedRecord = record
+        updatedRecord.updatedAt = Date()
+        try writeJSON(updatedRecord, to: currentRuntimeHostURL())
+    }
+
+    private static func loadCurrentRuntimeHost() throws -> LoupeRuntimeHostRecord? {
+        let url = currentRuntimeHostURL()
         guard FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
@@ -2354,8 +2547,13 @@ struct LoupeCLI {
         _ snapshot: LoupeSnapshot,
         selector: LoupeSelector?,
         depth: Int?,
-        includeHidden: Bool
+        includeHidden: Bool,
+        presentation: TreePresentation = .outline
     ) -> String {
+        if presentation != .outline {
+            return renderFlatViewTree(snapshot, selector: selector, includeHidden: includeHidden, presentation: presentation)
+        }
+
         let roots: [String]
         if let selector {
             roots = LoupeSnapshotQuery.find(
@@ -2371,7 +2569,14 @@ struct LoupeCLI {
         for ref in roots {
             appendViewTree(ref: ref, snapshot: snapshot, depth: 0, maxDepth: depth, includeHidden: includeHidden, lines: &lines)
         }
-        return lines.isEmpty ? "(empty)" : lines.joined(separator: "\n")
+        guard !lines.isEmpty else {
+            return "(empty)"
+        }
+        var output = lines.joined(separator: "\n")
+        if let depth, depth <= 5, visiblePrefixContainsOnlyContainers(roots: roots, snapshot: snapshot, maxDepth: depth, includeHidden: includeHidden) {
+            output += "\n\nhint: Only container nodes found at depth \(depth). Try --depth 8 or `loupe tree --interesting`."
+        }
+        return output
     }
 
     private static func appendViewTree(
@@ -2401,8 +2606,13 @@ struct LoupeCLI {
         _ tree: LoupeAccessibilityTree,
         selector: LoupeSelector?,
         depth: Int?,
-        includeHidden: Bool
+        includeHidden: Bool,
+        presentation: TreePresentation = .outline
     ) -> String {
+        if presentation != .outline {
+            return renderFlatAccessibilityTree(tree, selector: selector, includeHidden: includeHidden, presentation: presentation)
+        }
+
         let roots: [String]
         if let selector {
             roots = LoupeAccessibilityTreeQuery.find(
@@ -2418,7 +2628,14 @@ struct LoupeCLI {
         for ref in roots {
             appendAccessibilityTree(ref: ref, tree: tree, depth: 0, maxDepth: depth, includeHidden: includeHidden, lines: &lines)
         }
-        return lines.isEmpty ? "(empty)" : lines.joined(separator: "\n")
+        guard !lines.isEmpty else {
+            return "(empty)"
+        }
+        var output = lines.joined(separator: "\n")
+        if let depth, depth <= 5, accessibilityPrefixContainsOnlyContainers(roots: roots, tree: tree, maxDepth: depth, includeHidden: includeHidden) {
+            output += "\n\nhint: Only container nodes found at depth \(depth). Try --depth 8 or `loupe tree --interesting`."
+        }
+        return output
     }
 
     private static func appendAccessibilityTree(
@@ -2441,6 +2658,194 @@ struct LoupeCLI {
         }
         for child in node.children {
             appendAccessibilityTree(ref: child, tree: tree, depth: depth + 1, maxDepth: maxDepth, includeHidden: includeHidden, lines: &lines)
+        }
+    }
+
+    private static func renderFlatViewTree(
+        _ snapshot: LoupeSnapshot,
+        selector: LoupeSelector?,
+        includeHidden: Bool,
+        presentation: TreePresentation
+    ) -> String {
+        let nodes = selectedViewNodes(snapshot, selector: selector, includeHidden: includeHidden)
+            .filter { node in
+                switch presentation {
+                case .outline:
+                    return true
+                case .interesting:
+                    return isInteresting(node)
+                case .visibleLeaves:
+                    return isVisibleLeaf(node, in: snapshot, includeHidden: includeHidden)
+                case .text:
+                    return displayText(node) != nil
+                case .mutable:
+                    return !supportedMutationProperties(for: node).isEmpty
+                }
+            }
+        let lines = nodes.map(viewTreeLine)
+        return lines.isEmpty ? "(empty)" : lines.joined(separator: "\n")
+    }
+
+    private static func selectedViewNodes(
+        _ snapshot: LoupeSnapshot,
+        selector: LoupeSelector?,
+        includeHidden: Bool
+    ) -> [LoupeNode] {
+        if let selector {
+            return LoupeSnapshotQuery.find(
+                selector,
+                in: snapshot,
+                options: LoupeQueryOptions(includeHidden: includeHidden, includeDisabled: true, maxResults: 200)
+            ).compactMap { snapshot.nodes[$0.ref] }
+        }
+        return snapshot.nodes.values
+            .filter { includeHidden || $0.isVisible }
+            .sorted(by: nodeScreenOrder)
+    }
+
+    private static func renderFlatAccessibilityTree(
+        _ tree: LoupeAccessibilityTree,
+        selector: LoupeSelector?,
+        includeHidden: Bool,
+        presentation: TreePresentation
+    ) -> String {
+        let nodes = selectedAccessibilityNodes(tree, selector: selector, includeHidden: includeHidden)
+            .filter { node in
+                switch presentation {
+                case .outline, .mutable:
+                    return true
+                case .interesting:
+                    return accessibilityDisplayText(node) != nil || node.testID != nil || node.isInteractive
+                case .visibleLeaves:
+                    return node.children.isEmpty
+                case .text:
+                    return accessibilityDisplayText(node) != nil
+                }
+            }
+        let lines = nodes.map(accessibilityTreeLine)
+        return lines.isEmpty ? "(empty)" : lines.joined(separator: "\n")
+    }
+
+    private static func selectedAccessibilityNodes(
+        _ tree: LoupeAccessibilityTree,
+        selector: LoupeSelector?,
+        includeHidden: Bool
+    ) -> [LoupeAccessibilityNode] {
+        if let selector {
+            return LoupeAccessibilityTreeQuery.find(
+                selector,
+                in: tree,
+                options: LoupeQueryOptions(includeHidden: includeHidden, includeDisabled: true, maxResults: 200)
+            ).compactMap { tree.nodes[$0.ref] }
+        }
+        return tree.nodes.values
+            .filter { includeHidden || $0.isVisible }
+            .sorted(by: accessibilityNodeScreenOrder)
+    }
+
+    private static func nodeScreenOrder(_ lhs: LoupeNode, _ rhs: LoupeNode) -> Bool {
+        if let lhsFrame = lhs.frame, let rhsFrame = rhs.frame {
+            if abs(lhsFrame.y - rhsFrame.y) > 0.5 {
+                return lhsFrame.y < rhsFrame.y
+            }
+            if abs(lhsFrame.x - rhsFrame.x) > 0.5 {
+                return lhsFrame.x < rhsFrame.x
+            }
+        }
+        return lhs.ref < rhs.ref
+    }
+
+    private static func accessibilityNodeScreenOrder(_ lhs: LoupeAccessibilityNode, _ rhs: LoupeAccessibilityNode) -> Bool {
+        if let lhsFrame = lhs.frame, let rhsFrame = rhs.frame {
+            if abs(lhsFrame.y - rhsFrame.y) > 0.5 {
+                return lhsFrame.y < rhsFrame.y
+            }
+            if abs(lhsFrame.x - rhsFrame.x) > 0.5 {
+                return lhsFrame.x < rhsFrame.x
+            }
+        }
+        return lhs.ref < rhs.ref
+    }
+
+    private static func isInteresting(_ node: LoupeNode) -> Bool {
+        displayText(node) != nil || node.testID != nil || node.isInteractive || node.role != nil
+    }
+
+    private static func isVisibleLeaf(_ node: LoupeNode, in snapshot: LoupeSnapshot, includeHidden: Bool) -> Bool {
+        guard includeHidden || node.isVisible else {
+            return false
+        }
+        return !node.children.contains { ref in
+            guard let child = snapshot.nodes[ref] else {
+                return false
+            }
+            return includeHidden || child.isVisible
+        }
+    }
+
+    private static func visiblePrefixContainsOnlyContainers(
+        roots: [String],
+        snapshot: LoupeSnapshot,
+        maxDepth: Int,
+        includeHidden: Bool
+    ) -> Bool {
+        var visited: [LoupeNode] = []
+        for root in roots {
+            collectViewPrefix(ref: root, snapshot: snapshot, depth: 0, maxDepth: maxDepth, includeHidden: includeHidden, nodes: &visited)
+        }
+        return !visited.isEmpty && visited.allSatisfy(isContainerOnly)
+    }
+
+    private static func collectViewPrefix(
+        ref: String,
+        snapshot: LoupeSnapshot,
+        depth: Int,
+        maxDepth: Int,
+        includeHidden: Bool,
+        nodes: inout [LoupeNode]
+    ) {
+        guard let node = snapshot.nodes[ref], includeHidden || node.isVisible else {
+            return
+        }
+        nodes.append(node)
+        guard depth < maxDepth else {
+            return
+        }
+        for child in node.children {
+            collectViewPrefix(ref: child, snapshot: snapshot, depth: depth + 1, maxDepth: maxDepth, includeHidden: includeHidden, nodes: &nodes)
+        }
+    }
+
+    private static func accessibilityPrefixContainsOnlyContainers(
+        roots: [String],
+        tree: LoupeAccessibilityTree,
+        maxDepth: Int,
+        includeHidden: Bool
+    ) -> Bool {
+        var visited: [LoupeAccessibilityNode] = []
+        for root in roots {
+            collectAccessibilityPrefix(ref: root, tree: tree, depth: 0, maxDepth: maxDepth, includeHidden: includeHidden, nodes: &visited)
+        }
+        return !visited.isEmpty && visited.allSatisfy(isAccessibilityContainerOnly)
+    }
+
+    private static func collectAccessibilityPrefix(
+        ref: String,
+        tree: LoupeAccessibilityTree,
+        depth: Int,
+        maxDepth: Int,
+        includeHidden: Bool,
+        nodes: inout [LoupeAccessibilityNode]
+    ) {
+        guard let node = tree.nodes[ref], includeHidden || node.isVisible else {
+            return
+        }
+        nodes.append(node)
+        guard depth < maxDepth else {
+            return
+        }
+        for child in node.children {
+            collectAccessibilityPrefix(ref: child, tree: tree, depth: depth + 1, maxDepth: maxDepth, includeHidden: includeHidden, nodes: &nodes)
         }
     }
 
@@ -2473,9 +2878,115 @@ struct LoupeCLI {
     }
 
     private static func displayText(_ node: LoupeNode) -> String? {
-        [node.text, node.label, node.value, node.placeholder]
+        [node.text, node.renderedText, node.semanticText, node.label, node.value, node.placeholder]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+    }
+
+    private static func accessibilityDisplayText(_ node: LoupeAccessibilityNode) -> String? {
+        LoupeAccessibilityTreeQuery.displayText(for: node)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
+    private static func isContainerOnly(_ node: LoupeNode) -> Bool {
+        displayText(node) == nil
+            && node.testID == nil
+            && node.role == nil
+            && !node.isInteractive
+    }
+
+    private static func isAccessibilityContainerOnly(_ node: LoupeAccessibilityNode) -> Bool {
+        accessibilityDisplayText(node) == nil
+            && node.testID == nil
+            && node.role == nil
+            && !node.isInteractive
+    }
+
+    private static func supportedMutationProperties(for node: LoupeNode) -> [String] {
+        var properties = [
+            "frame", "bounds", "center", "alpha", "hidden", "clipsToBounds",
+            "userInteractionEnabled", "backgroundColor", "tintColor", "accessibility.label",
+            "accessibility.value", "accessibility.hint", "accessibility.isElement",
+        ]
+
+        if isTextBacked(node) {
+            properties += ["text", "textColor", "fontSize", "textAlignment", "lineBreakMode"]
+        }
+        if node.uiKit?.label != nil || node.role == "staticText" {
+            properties += ["numberOfLines", "adjustsFontSizeToFitWidth", "minimumScaleFactor"]
+        }
+        if node.uiKit?.textField != nil || node.role == "textField" {
+            properties += ["placeholder", "secureTextEntry"]
+        }
+        if node.uiKit?.button != nil || node.role == "button" {
+            properties += ["title"]
+        }
+        if node.uiKit?.switchControl != nil || node.role == "switch" {
+            properties += ["enabled", "selected", "highlighted", "switch.isOn"]
+        } else if node.uiKit?.control != nil || node.isInteractive {
+            properties += ["enabled", "selected", "highlighted"]
+        }
+        if node.uiKit?.slider != nil || node.role == "slider" {
+            properties += ["slider.value", "slider.minimumValue", "slider.maximumValue"]
+        }
+        if node.uiKit?.stepper != nil || node.role == "stepper" {
+            properties += ["stepper.value", "stepper.minimumValue", "stepper.maximumValue", "stepper.stepValue"]
+        }
+        if node.uiKit?.segmentedControl != nil || node.role == "segmentedControl" {
+            properties += ["segmentedControl.selectedSegmentIndex"]
+        }
+        if node.uiKit?.pageControl != nil || node.role == "pageControl" {
+            properties += ["pageControl.currentPage", "pageControl.numberOfPages"]
+        }
+        if node.uiKit?.progressView != nil || node.role == "progress" {
+            properties += ["progressView.progress"]
+        }
+        if node.uiKit?.datePicker != nil || node.role == "datePicker" {
+            properties += ["datePicker.date", "datePicker.countDownDuration"]
+        }
+        if node.uiKit?.activityIndicator != nil || node.role == "activityIndicator" {
+            properties += ["activityIndicator.animating"]
+        }
+        if node.uiKit?.pickerView != nil || node.role == "pickerView" {
+            properties += ["pickerView.selectedRow"]
+        }
+        if node.role == "scrollView" {
+            properties += ["contentOffset", "contentSize", "contentInset", "scrollEnabled", "pagingEnabled"]
+        }
+
+        return Array(Set(properties)).sorted()
+    }
+
+    private static func unsupportedMutationExamples(for node: LoupeNode) -> [String] {
+        if isTextBacked(node) {
+            return []
+        }
+        return ["text"]
+    }
+
+    private static func isTextBacked(_ node: LoupeNode) -> Bool {
+        node.uiKit?.label != nil
+            || node.uiKit?.button != nil
+            || node.uiKit?.textField != nil
+            || node.uiKit?.textView != nil
+            || ["UILabel", "UIButton", "UITextField", "UITextView"].contains(node.uiKit?.className ?? node.typeName)
+    }
+
+    private static func renderNodeMutationCapabilities(_ node: LoupeNode) -> String {
+        let supported = supportedMutationProperties(for: node)
+        let unsupported = unsupportedMutationExamples(for: node)
+        var lines = [
+            "\(node.ref) \(node.uiKit?.className ?? node.typeName)",
+            "supported: \(supported.isEmpty ? "none" : supported.joined(separator: ", "))",
+        ]
+        if !unsupported.isEmpty {
+            lines.append("unsupported: \(unsupported.joined(separator: ", "))")
+        }
+        if !isTextBacked(node), displayText(node) != nil {
+            lines.append("hint: visible text is semantic/accessibility text; mutate accessibility.label or inspect the source view instead of text.")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private static func firstMatchingNode(_ selector: LoupeSelector, in snapshot: LoupeSnapshot) -> LoupeNode? {
@@ -2658,7 +3169,7 @@ struct LoupeCLI {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return urls
-            .filter { $0.pathExtension == "json" }
+            .filter { $0.pathExtension == "json" && $0.lastPathComponent != "current.json" }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 return try? decoder.decode(LoupeRuntimeHostRecord.self, from: data)
@@ -2744,6 +3255,14 @@ struct LoupeCLI {
 private enum QueryTree: String {
     case view
     case accessibility
+}
+
+private enum TreePresentation {
+    case outline
+    case interesting
+    case visibleLeaves
+    case text
+    case mutable
 }
 
 private struct DiffOptions {
@@ -3082,22 +3601,26 @@ private struct TreeOptions {
     var host: URL
     var hostWasExplicit: Bool
     var udid: String?
+    var bundleID: String?
     var selector: LoupeSelector?
     var includeHidden: Bool
     var depth: Int?
     var timeout: TimeInterval
     var tree: QueryTree
+    var presentation: TreePresentation
 
     init(_ arguments: [String]) throws {
         snapshotURL = nil
         host = URL(string: "http://127.0.0.1:8765")!
         hostWasExplicit = false
         udid = nil
+        bundleID = nil
         selector = nil
         includeHidden = false
         depth = nil
         timeout = 5
         tree = .view
+        presentation = .outline
 
         var index = 0
         if let first = arguments.first, !first.hasPrefix("--") {
@@ -3116,10 +3639,19 @@ private struct TreeOptions {
                 hostWasExplicit = true
             case "--udid", "--device":
                 udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
             case "--view":
                 tree = .view
             case "--accessibility":
                 tree = .accessibility
+            case "--interesting":
+                presentation = .interesting
+            case "--visible-leaves":
+                presentation = .visibleLeaves
+            case "--mutable":
+                presentation = .mutable
+                tree = .view
             case "--tree":
                 let rawValue = try Self.value(after: "--tree", in: arguments, index: &index)
                 guard let value = QueryTree(rawValue: rawValue) else {
@@ -3129,7 +3661,11 @@ private struct TreeOptions {
             case "--test-id":
                 selector = .testID(try Self.value(after: "--test-id", in: arguments, index: &index))
             case "--text":
-                selector = .text(try Self.value(after: "--text", in: arguments, index: &index), exact: false)
+                if index + 1 < arguments.count, !arguments[index + 1].hasPrefix("--") {
+                    selector = .text(try Self.value(after: "--text", in: arguments, index: &index), exact: false)
+                } else {
+                    presentation = .text
+                }
             case "--exact-text":
                 selector = .text(try Self.value(after: "--exact-text", in: arguments, index: &index), exact: true)
             case "--role":
@@ -3176,27 +3712,52 @@ private struct TreeOptions {
 }
 
 private struct QueryOptions {
-    var snapshotURL: URL
+    var snapshotURL: URL?
+    var host: URL
+    var hostWasExplicit: Bool
+    var udid: String?
+    var bundleID: String?
     var selector: LoupeSelector
     var includeHidden: Bool
     var maxResults: Int
     var tree: QueryTree
+    var timeout: TimeInterval
 
     init(_ arguments: [String]) throws {
-        guard let path = arguments.first, !path.hasPrefix("--") else {
-            throw CLIError("Usage: loupe query <snapshot.json> (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--tree view|accessibility]")
+        if arguments.isEmpty {
+            throw CLIError("Usage: loupe query [snapshot.json] (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--host <url>] [--bundle-id <id>] [--tree view|accessibility]")
         }
 
-        snapshotURL = URL(fileURLWithPath: path)
+        snapshotURL = nil
+        host = URL(string: "http://127.0.0.1:8765")!
+        hostWasExplicit = false
+        udid = nil
+        bundleID = nil
         includeHidden = false
         maxResults = 50
         tree = .view
+        timeout = 5
 
         var selector: LoupeSelector?
-        var index = 1
+        var index = 0
+        if let first = arguments.first, !first.hasPrefix("--") {
+            snapshotURL = URL(fileURLWithPath: first)
+            index = 1
+        }
 
         while index < arguments.count {
             switch arguments[index] {
+            case "--host":
+                let raw = try Self.value(after: "--host", in: arguments, index: &index)
+                guard let url = URL(string: raw) else {
+                    throw CLIError("Invalid --host URL: \(raw)")
+                }
+                host = url
+                hostWasExplicit = true
+            case "--udid", "--device":
+                udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
             case "--test-id":
                 selector = .testID(try Self.value(after: "--test-id", in: arguments, index: &index))
             case "--text":
@@ -3221,6 +3782,8 @@ private struct QueryOptions {
                     throw CLIError("--tree expects view or accessibility")
                 }
                 tree = value
+            case "--timeout":
+                timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
             default:
                 throw CLIError("Unknown query option: \(arguments[index])")
             }
@@ -3233,6 +3796,9 @@ private struct QueryOptions {
         }
 
         self.selector = selector
+        guard timeout > 0 else {
+            throw CLIError("--timeout must be greater than 0")
+        }
     }
 
     private static func value(
@@ -3246,6 +3812,14 @@ private struct QueryOptions {
         }
         index = valueIndex
         return arguments[valueIndex]
+    }
+
+    private static func double(after option: String, in arguments: [String], index: inout Int) throws -> Double {
+        let raw = try value(after: option, in: arguments, index: &index)
+        guard let value = Double(raw) else {
+            throw CLIError("\(option) expects a number")
+        }
+        return value
     }
 }
 
@@ -3923,6 +4497,7 @@ private struct MutationSetOptions {
     var host: URL
     var hostWasExplicit: Bool
     var udid: String?
+    var bundleID: String?
     var timeout: TimeInterval
     var outputURL: URL?
     var request: LoupeMutationRequest
@@ -3931,6 +4506,7 @@ private struct MutationSetOptions {
         host = URL(string: "http://127.0.0.1:8765")!
         hostWasExplicit = false
         udid = nil
+        bundleID = nil
         timeout = 5
         outputURL = nil
 
@@ -3949,6 +4525,8 @@ private struct MutationSetOptions {
                 hostWasExplicit = true
             case "--udid", "--device":
                 udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
             case "--timeout":
                 timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
             case "--output":
@@ -4236,6 +4814,7 @@ private struct RuntimeFetchOptions {
     var host: URL
     var hostWasExplicit: Bool
     var udid: String?
+    var bundleID: String?
     var alias: String?
     var outputURL: URL?
     var timeout: TimeInterval
@@ -4244,6 +4823,7 @@ private struct RuntimeFetchOptions {
         host = URL(string: "http://127.0.0.1:8765")!
         hostWasExplicit = false
         var udid: String?
+        var bundleID: String?
         var alias: String?
         var outputURL: URL?
         var timeout: TimeInterval = 5
@@ -4261,6 +4841,8 @@ private struct RuntimeFetchOptions {
                 hostWasExplicit = true
             case "--udid", "--device":
                 udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
             case "--alias", "--name":
                 guard allowsAlias else {
                     throw CLIError("Unknown runtime option: \(arguments[index])")
@@ -4278,6 +4860,7 @@ private struct RuntimeFetchOptions {
             index += 1
         }
         self.udid = udid
+        self.bundleID = bundleID
         self.alias = alias
         self.outputURL = outputURL
         guard timeout > 0 else {
@@ -4320,6 +4903,181 @@ private struct RuntimeListOptions {
                 timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
             default:
                 throw CLIError("Unknown runtimes option: \(arguments[index])")
+            }
+            index += 1
+        }
+        guard timeout > 0 else {
+            throw CLIError("--timeout must be greater than 0")
+        }
+    }
+
+    private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+        let valueIndex = index + 1
+        guard valueIndex < arguments.count else {
+            throw CLIError("\(option) requires a value")
+        }
+        index = valueIndex
+        return arguments[valueIndex]
+    }
+
+    private static func double(after option: String, in arguments: [String], index: inout Int) throws -> Double {
+        let raw = try value(after: option, in: arguments, index: &index)
+        guard let value = Double(raw) else {
+            throw CLIError("\(option) expects a number")
+        }
+        return value
+    }
+}
+
+private struct RuntimeUseOptions {
+    var host: URL?
+    var bundleID: String?
+    var udid: String?
+    var timeout: TimeInterval
+
+    init(_ arguments: [String]) throws {
+        host = nil
+        bundleID = nil
+        udid = nil
+        timeout = 2
+        var index = 0
+        while index < arguments.count {
+            switch arguments[index] {
+            case let value where !value.hasPrefix("--") && bundleID == nil:
+                bundleID = value
+            case "--host":
+                let raw = try Self.value(after: "--host", in: arguments, index: &index)
+                guard let url = URL(string: raw) else {
+                    throw CLIError("Invalid --host URL: \(raw)")
+                }
+                host = url
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
+            case "--udid", "--device":
+                udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--timeout":
+                timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
+            default:
+                throw CLIError("Unknown use option: \(arguments[index])")
+            }
+            index += 1
+        }
+        guard timeout > 0 else {
+            throw CLIError("--timeout must be greater than 0")
+        }
+    }
+
+    private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+        let valueIndex = index + 1
+        guard valueIndex < arguments.count else {
+            throw CLIError("\(option) requires a value")
+        }
+        index = valueIndex
+        return arguments[valueIndex]
+    }
+
+    private static func double(after option: String, in arguments: [String], index: inout Int) throws -> Double {
+        let raw = try value(after: option, in: arguments, index: &index)
+        guard let value = Double(raw) else {
+            throw CLIError("\(option) expects a number")
+        }
+        return value
+    }
+}
+
+private struct RuntimeCurrentOptions {
+    var json: Bool
+    var timeout: TimeInterval
+
+    init(_ arguments: [String]) throws {
+        json = false
+        timeout = 1
+        var index = 0
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--json":
+                json = true
+            case "--timeout":
+                timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
+            default:
+                throw CLIError("Unknown current option: \(arguments[index])")
+            }
+            index += 1
+        }
+        guard timeout > 0 else {
+            throw CLIError("--timeout must be greater than 0")
+        }
+    }
+
+    private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+        let valueIndex = index + 1
+        guard valueIndex < arguments.count else {
+            throw CLIError("\(option) requires a value")
+        }
+        index = valueIndex
+        return arguments[valueIndex]
+    }
+
+    private static func double(after option: String, in arguments: [String], index: inout Int) throws -> Double {
+        let raw = try value(after: option, in: arguments, index: &index)
+        guard let value = Double(raw) else {
+            throw CLIError("\(option) expects a number")
+        }
+        return value
+    }
+}
+
+private struct MutationListOptions {
+    var host: URL
+    var hostWasExplicit: Bool
+    var udid: String?
+    var bundleID: String?
+    var selector: LoupeSelector?
+    var includeHidden: Bool
+    var outputURL: URL?
+    var timeout: TimeInterval
+
+    init(_ arguments: [String]) throws {
+        host = URL(string: "http://127.0.0.1:8765")!
+        hostWasExplicit = false
+        udid = nil
+        bundleID = nil
+        selector = nil
+        includeHidden = false
+        outputURL = nil
+        timeout = 5
+        var index = 0
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--host":
+                let raw = try Self.value(after: "--host", in: arguments, index: &index)
+                guard let url = URL(string: raw) else {
+                    throw CLIError("Invalid --host URL: \(raw)")
+                }
+                host = url
+                hostWasExplicit = true
+            case "--udid", "--device":
+                udid = try Self.value(after: arguments[index], in: arguments, index: &index)
+            case "--bundle-id":
+                bundleID = try Self.value(after: "--bundle-id", in: arguments, index: &index)
+            case "--ref":
+                selector = .ref(try Self.value(after: "--ref", in: arguments, index: &index))
+            case "--test-id":
+                selector = .testID(try Self.value(after: "--test-id", in: arguments, index: &index))
+            case "--text":
+                selector = .text(try Self.value(after: "--text", in: arguments, index: &index), exact: false)
+            case "--exact-text":
+                selector = .text(try Self.value(after: "--exact-text", in: arguments, index: &index), exact: true)
+            case "--role":
+                selector = .role(try Self.value(after: "--role", in: arguments, index: &index))
+            case "--include-hidden":
+                includeHidden = true
+            case "--output":
+                outputURL = URL(fileURLWithPath: try Self.value(after: "--output", in: arguments, index: &index))
+            case "--timeout":
+                timeout = try Self.double(after: "--timeout", in: arguments, index: &index)
+            default:
+                throw CLIError("Unknown mutations option: \(arguments[index])")
             }
             index += 1
         }
@@ -4699,5 +5457,11 @@ private struct CLIError: Error, CustomStringConvertible {
 
     init(_ description: String) {
         self.description = description
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

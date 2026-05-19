@@ -210,6 +210,11 @@ public final class LoupeAgent {
         guard let afterNode = afterCapture.snapshot.nodes[target.ref] else {
             throw LoupeMutationError(status: 404, code: "node_not_found", message: "Mutated node disappeared after mutation.")
         }
+        let effective = mutationPropertyValue(request.property, in: afterNode)
+        let changed = effective.map { mutationValuesApproximatelyEqual(request.value, $0) }
+        let warning = changed == false
+            ? "Mutation applied, but the effective snapshot value does not match the requested value. A layout pass or UIKit owner may have restored it."
+            : nil
 
         return LoupeMutationResponse(
             property: request.property,
@@ -219,6 +224,10 @@ public final class LoupeAgent {
             before: beforeNode,
             after: afterNode,
             hierarchy: mutationHierarchyContext(targetRef: target.ref, snapshot: afterCapture.snapshot),
+            requested: request.value,
+            effective: effective,
+            changed: changed,
+            warning: warning,
             snapshotID: afterCapture.snapshot.id
         )
     }
@@ -347,6 +356,8 @@ public final class LoupeAgent {
             value: view.accessibilityValue,
             placeholder: placeholder(for: view),
             text: text(for: view),
+            renderedText: renderedText(for: view),
+            semanticText: semanticText(for: view),
             frame: frameInScreen(for: view),
             isVisible: visible,
             isEnabled: isEnabled(view),
@@ -716,6 +727,62 @@ private func applyMutation(property: String, value: LoupeMutationValue, to view:
 
     try descriptor.apply(view, value)
     view.setNeedsDisplay()
+}
+
+private func mutationPropertyValue(_ property: String, in node: LoupeNode) -> LoupeMutationValue? {
+    switch normalizedMutationProperty(property) {
+    case "frame":
+        return node.frame.map(LoupeMutationValue.rect)
+    case "alpha", "style.alpha", "uikit.alpha":
+        return node.style?.alpha.map(LoupeMutationValue.double)
+    case "hidden", "ishidden", "uikit.ishidden":
+        return .bool(!node.isVisible)
+    case "backgroundcolor", "style.backgroundcolor":
+        return node.style?.backgroundColor.map(LoupeMutationValue.color)
+    case "text", "label.text", "textfield.text", "textview.text", "uikit.text":
+        return node.text.map(LoupeMutationValue.string)
+    case "placeholder", "textfield.placeholder", "searchbar.placeholder":
+        return node.placeholder.map(LoupeMutationValue.string)
+    case "accessibility.label", "accessibilitylabel", "label":
+        return node.accessibility?.label.map(LoupeMutationValue.string) ?? node.label.map(LoupeMutationValue.string)
+    case "accessibility.value", "accessibilityvalue":
+        return node.accessibility?.value.map(LoupeMutationValue.string) ?? node.value.map(LoupeMutationValue.string)
+    case "accessibility.hint", "accessibilityhint":
+        return node.accessibility?.hint.map(LoupeMutationValue.string)
+    case "accessibility.identifier", "accessibilityidentifier", "testid":
+        return node.accessibility?.identifier.map(LoupeMutationValue.string) ?? node.testID.map(LoupeMutationValue.string)
+    default:
+        return nil
+    }
+}
+
+private func mutationValuesApproximatelyEqual(_ requested: LoupeMutationValue, _ effective: LoupeMutationValue) -> Bool {
+    switch (requested, effective) {
+    case let (.bool(lhs), .bool(rhs)):
+        return lhs == rhs
+    case let (.int(lhs), .int(rhs)):
+        return lhs == rhs
+    case let (.double(lhs), .double(rhs)):
+        return abs(lhs - rhs) < 0.5
+    case let (.string(lhs), .string(rhs)):
+        return lhs == rhs
+    case let (.color(lhs), .color(rhs)):
+        return abs(lhs.red - rhs.red) < 0.01
+            && abs(lhs.green - rhs.green) < 0.01
+            && abs(lhs.blue - rhs.blue) < 0.01
+            && abs(lhs.alpha - rhs.alpha) < 0.01
+    case let (.point(lhs), .point(rhs)):
+        return abs(lhs.x - rhs.x) < 0.5 && abs(lhs.y - rhs.y) < 0.5
+    case let (.size(lhs), .size(rhs)):
+        return abs(lhs.width - rhs.width) < 0.5 && abs(lhs.height - rhs.height) < 0.5
+    case let (.rect(lhs), .rect(rhs)):
+        return abs(lhs.x - rhs.x) < 0.5
+            && abs(lhs.y - rhs.y) < 0.5
+            && abs(lhs.width - rhs.width) < 0.5
+            && abs(lhs.height - rhs.height) < 0.5
+    default:
+        return false
+    }
 }
 
 private struct LoupeMutationDescriptor {
@@ -1541,6 +1608,24 @@ private func text(for view: UIView) -> String? {
     }
 
     return nil
+}
+
+@MainActor
+private func renderedText(for view: UIView) -> String? {
+    text(for: view)
+}
+
+@MainActor
+private func semanticText(for view: UIView) -> String? {
+    let candidates = [
+        text(for: view),
+        view.accessibilityLabel,
+        view.accessibilityValue,
+        descendantText(in: view),
+    ]
+    return candidates
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty }
 }
 
 @MainActor
