@@ -58,6 +58,20 @@ public struct LoupeRect: Codable, Equatable {
     }
 }
 
+public struct LoupeInsets: Codable, Equatable {
+    public var top: Double
+    public var left: Double
+    public var bottom: Double
+    public var right: Double
+
+    public init(top: Double, left: Double, bottom: Double, right: Double) {
+        self.top = top
+        self.left = left
+        self.bottom = bottom
+        self.right = right
+    }
+}
+
 public struct LoupeColor: Codable, Equatable {
     public var red: Double
     public var green: Double

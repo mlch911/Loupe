@@ -972,7 +972,13 @@ struct LoupeCLI {
         var options = try ActionOptions(command: command, arguments: arguments)
         var target: ActionTarget?
         do {
-            if command == "tap", let point = options.point, options.traceDirectory == nil, !options.hostWasExplicit, options.expectVisibleTestID == nil {
+            if command == "tap",
+               let point = options.point,
+               options.screen.width > 0,
+               options.screen.height > 0,
+               options.traceDirectory == nil,
+               !options.hostWasExplicit,
+               options.expectVisibleTestID == nil {
                 let coordinateTarget = ActionTarget(point: point, screen: options.screen, screenScale: 1, source: .coordinates)
                 target = coordinateTarget
                 try dispatchAction(command: command, options: options, target: coordinateTarget)
@@ -1164,7 +1170,8 @@ struct LoupeCLI {
 
     private static func resolveActionTarget(_ options: ActionOptions) async throws -> ActionTarget {
         if let point = options.point {
-            return ActionTarget(point: point, screen: options.screen, screenScale: 1, source: .coordinates)
+            let screen = try await resolveActionScreen(options)
+            return ActionTarget(point: point, screen: screen.size, screenScale: screen.scale, source: .coordinates)
         }
 
         guard let selector = options.selector else {
@@ -1230,6 +1237,15 @@ struct LoupeCLI {
             source: .view(ref: result.ref),
             match: .view(result)
         )
+    }
+
+    private static func resolveActionScreen(_ options: ActionOptions) async throws -> (size: LoupeSize, scale: Double) {
+        if options.screen.width > 0, options.screen.height > 0 {
+            return (options.screen, 1)
+        }
+
+        let snapshot = try await fetchSnapshot(host: options.host, timeout: options.timeout)
+        return (snapshot.screen.size, snapshot.screen.scale)
     }
 
     private static func center(of frame: LoupeRect?) -> LoupePoint? {

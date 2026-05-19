@@ -147,6 +147,17 @@ query_ref() {
     ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
 }
 
+inspect_value() {
+  local test_id="$1"
+  local path="$2"
+  .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id "$test_id" |
+    ruby -rjson -e '
+      value = JSON.parse(STDIN.read)
+      ARGV.fetch(0).split(".").each { |key| value = value.fetch(key) }
+      puts value
+    ' "$path"
+}
+
 launch_app
 fetch_snapshot
 read -r WIDTH HEIGHT < <(ruby -rjson -e '
@@ -156,6 +167,26 @@ read -r WIDTH HEIGHT < <(ruby -rjson -e '
 ' "$SNAPSHOT_PATH")
 MID_Y="$(ruby -e 'puts (ARGV.fetch(0).to_f * 0.45).round' "$HEIGHT")"
 END_X="$(ruby -e 'puts (ARGV.fetch(0).to_f - 24).round' "$WIDTH")"
+
+echo "case: bottom sheet grabber tap expands and internal scroll moves"
+launch_app bottomSheet
+.build/debug/loupe wait-for-visible --host "$HOST" --test-id example.bottomSheet.grabber --timeout 5 >/tmp/loupe-native-wait-bottomsheet.json
+fetch_snapshot
+assert_query example.bottomSheet.scrollView /tmp/loupe-native-bottomsheet-scroll-query.json
+COLLAPSED_Y="$(inspect_value example.bottomSheet.scrollView node.frame.y)"
+COLLAPSED_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.frame.height)"
+GRABBER_REF="$(query_ref example.bottomSheet.grabber)"
+.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --ref "$GRABBER_REF" --expect-visible example.bottomSheet.expandedMarker
+fetch_snapshot
+EXPANDED_Y="$(inspect_value example.bottomSheet.scrollView node.frame.y)"
+EXPANDED_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.frame.height)"
+CONTENT_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.uiKit.scrollView.contentSize.height)"
+ruby -e '
+  moved_up = ARGV.fetch(0).to_f < ARGV.fetch(1).to_f - 120
+  grew = ARGV.fetch(2).to_f > ARGV.fetch(3).to_f + 120
+  long_list = ARGV.fetch(4).to_f > ARGV.fetch(2).to_f + 400
+  exit(moved_up && grew && long_list ? 0 : 1)
+' "$EXPANDED_Y" "$COLLAPSED_Y" "$EXPANDED_HEIGHT" "$COLLAPSED_HEIGHT" "$CONTENT_HEIGHT"
 
 echo "case: navigation pop by interactive edge drag from routed detail screen"
 launch_app detail
@@ -290,11 +321,11 @@ grep -q '"url" : "https:\\/\\/loupe.local\\/fixture"' "$INSPECT_PATH"
 
 launch_app fixtures.keyboard
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id example.fixtures.keyboard.firstName --timeout 5 >/tmp/loupe-native-wait-keyboard.json
-.build/debug/loupe type "Ada" --udid "$DEVICE"
+.build/debug/loupe type "1" --udid "$DEVICE"
 fetch_snapshot
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id example.fixtures.keyboard.firstName > "$INSPECT_PATH"
 grep -q '"className" : "UITextField"' "$INSPECT_PATH"
-grep -q '"text" : "Ada"' "$INSPECT_PATH"
+grep -q '"text" : "1"' "$INSPECT_PATH"
 grep -q '"isFirstResponder" : true' "$INSPECT_PATH"
 
 launch_app fixtures.nested

@@ -125,6 +125,31 @@ public struct LoupeUITextViewProperties: Codable, Equatable {
     }
 }
 
+public struct LoupeUIScrollViewProperties: Codable, Equatable {
+    public var contentOffset: LoupePoint
+    public var contentSize: LoupeSize
+    public var adjustedContentInset: LoupeInsets
+    public var isScrollEnabled: Bool
+    public var alwaysBounceVertical: Bool
+    public var alwaysBounceHorizontal: Bool
+
+    public init(
+        contentOffset: LoupePoint,
+        contentSize: LoupeSize,
+        adjustedContentInset: LoupeInsets,
+        isScrollEnabled: Bool,
+        alwaysBounceVertical: Bool,
+        alwaysBounceHorizontal: Bool
+    ) {
+        self.contentOffset = contentOffset
+        self.contentSize = contentSize
+        self.adjustedContentInset = adjustedContentInset
+        self.isScrollEnabled = isScrollEnabled
+        self.alwaysBounceVertical = alwaysBounceVertical
+        self.alwaysBounceHorizontal = alwaysBounceHorizontal
+    }
+}
+
 public struct LoupeUISwitchProperties: Codable, Equatable {
     public var isOn: Bool
 
@@ -272,6 +297,7 @@ public struct LoupeUIKitProperties: Codable, Equatable {
     public var button: LoupeUIButtonProperties?
     public var textField: LoupeUITextFieldProperties?
     public var textView: LoupeUITextViewProperties?
+    public var scrollView: LoupeUIScrollViewProperties?
     public var switchControl: LoupeUISwitchProperties?
     public var slider: LoupeUISliderProperties?
     public var stepper: LoupeUIStepperProperties?
@@ -303,6 +329,7 @@ public struct LoupeUIKitProperties: Codable, Equatable {
         button: LoupeUIButtonProperties? = nil,
         textField: LoupeUITextFieldProperties? = nil,
         textView: LoupeUITextViewProperties? = nil,
+        scrollView: LoupeUIScrollViewProperties? = nil,
         switchControl: LoupeUISwitchProperties? = nil,
         slider: LoupeUISliderProperties? = nil,
         stepper: LoupeUIStepperProperties? = nil,
@@ -333,6 +360,7 @@ public struct LoupeUIKitProperties: Codable, Equatable {
         self.button = button
         self.textField = textField
         self.textView = textView
+        self.scrollView = scrollView
         self.switchControl = switchControl
         self.slider = slider
         self.stepper = stepper

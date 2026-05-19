@@ -339,6 +339,151 @@ final class DetailViewController: UIViewController {
 
 }
 
+final class BottomSheetFixtureViewController: UIViewController {
+    private let sheetView = UIView()
+    private let grabberButton = UIButton(type: .system)
+    private let scrollView = UIScrollView()
+    private let contentStack = UIStackView()
+    private let stateLabel = UILabel()
+    private let expandedMarker = UILabel()
+    private var topConstraint: NSLayoutConstraint?
+    private var isExpanded = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        title = "Bottom Sheet"
+        navigationItem.largeTitleDisplayMode = .never
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "example.bottomSheet"
+        configureBackdrop()
+        configureSheet()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        guard !isExpanded else {
+            return
+        }
+        topConstraint?.constant = collapsedTop
+    }
+
+    private var collapsedTop: CGFloat {
+        max(view.bounds.height - 360, view.safeAreaInsets.top + 180)
+    }
+
+    private var expandedTop: CGFloat {
+        view.safeAreaInsets.top + 16
+    }
+
+    private func configureBackdrop() {
+        let mapLabel = UILabel()
+        mapLabel.text = "Map Fixture"
+        mapLabel.font = .preferredFont(forTextStyle: .largeTitle)
+        mapLabel.textColor = .secondaryLabel
+        mapLabel.textAlignment = .center
+        mapLabel.translatesAutoresizingMaskIntoConstraints = false
+        mapLabel.accessibilityIdentifier = "example.bottomSheet.backdrop"
+        view.addSubview(mapLabel)
+
+        NSLayoutConstraint.activate([
+            mapLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mapLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mapLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 48),
+        ])
+    }
+
+    private func configureSheet() {
+        sheetView.backgroundColor = .secondarySystemBackground
+        sheetView.layer.cornerRadius = 18
+        sheetView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        sheetView.clipsToBounds = true
+        sheetView.translatesAutoresizingMaskIntoConstraints = false
+        sheetView.accessibilityIdentifier = "example.bottomSheet.sheet"
+        view.addSubview(sheetView)
+
+        grabberButton.setTitle("Card grabber", for: .normal)
+        grabberButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
+        grabberButton.accessibilityIdentifier = "example.bottomSheet.grabber"
+        grabberButton.accessibilityLabel = "Card grabber"
+        grabberButton.addTarget(self, action: #selector(toggleSheet), for: .touchUpInside)
+
+        stateLabel.text = "Collapsed"
+        stateLabel.font = .preferredFont(forTextStyle: .headline)
+        stateLabel.accessibilityIdentifier = "example.bottomSheet.state"
+
+        expandedMarker.text = "Expanded"
+        expandedMarker.font = .preferredFont(forTextStyle: .subheadline)
+        expandedMarker.textColor = .systemGreen
+        expandedMarker.isHidden = true
+        expandedMarker.accessibilityIdentifier = "example.bottomSheet.expandedMarker"
+
+        let headerStack = UIStackView(arrangedSubviews: [grabberButton, stateLabel, expandedMarker])
+        headerStack.axis = .vertical
+        headerStack.alignment = .center
+        headerStack.spacing = 6
+
+        scrollView.alwaysBounceVertical = true
+        scrollView.accessibilityIdentifier = "example.bottomSheet.scrollView"
+
+        contentStack.axis = .vertical
+        contentStack.spacing = 12
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+
+        for index in 1...30 {
+            let label = UILabel()
+            label.text = "Place result \(index)"
+            label.font = .preferredFont(forTextStyle: .body)
+            label.backgroundColor = .tertiarySystemFill
+            label.layer.cornerRadius = 8
+            label.layer.masksToBounds = true
+            label.accessibilityIdentifier = "example.bottomSheet.item.\(index)"
+            contentStack.addArrangedSubview(label)
+            label.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        }
+
+        let sheetStack = UIStackView(arrangedSubviews: [headerStack, scrollView])
+        sheetStack.axis = .vertical
+        sheetStack.spacing = 12
+        sheetStack.translatesAutoresizingMaskIntoConstraints = false
+        sheetView.addSubview(sheetStack)
+        scrollView.addSubview(contentStack)
+
+        let topConstraint = sheetView.topAnchor.constraint(equalTo: view.topAnchor, constant: collapsedTop)
+        self.topConstraint = topConstraint
+
+        NSLayoutConstraint.activate([
+            topConstraint,
+            sheetView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sheetView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sheetView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            grabberButton.heightAnchor.constraint(equalToConstant: 44),
+            sheetStack.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor, constant: 20),
+            sheetStack.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor, constant: -20),
+            sheetStack.topAnchor.constraint(equalTo: sheetView.topAnchor, constant: 12),
+            sheetStack.bottomAnchor.constraint(equalTo: sheetView.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+        ])
+    }
+
+    @objc private func toggleSheet() {
+        setExpanded(!isExpanded)
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        isExpanded = expanded
+        topConstraint?.constant = expanded ? expandedTop : collapsedTop
+        stateLabel.text = expanded ? "Expanded" : "Collapsed"
+        expandedMarker.isHidden = !expanded
+        view.layoutIfNeeded()
+    }
+}
+
 final class ComponentsViewController: UIViewController {
     private let presentAlertAfterAppear: Bool
     private var didPresentInitialAlert = false

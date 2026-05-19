@@ -47,6 +47,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigationController.pushViewController(ComponentsViewController(), animated: false)
         case "components.alert":
             navigationController.pushViewController(ComponentsViewController(presentAlertAfterAppear: true), animated: false)
+        case "bottomSheet":
+            navigationController.pushViewController(BottomSheetFixtureViewController(), animated: false)
         case "fixtures":
             navigationController.pushViewController(FixtureTabController(), animated: false)
         case "fixtures.web":

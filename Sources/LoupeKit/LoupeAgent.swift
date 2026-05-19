@@ -1915,6 +1915,7 @@ private func uiKitProperties(for view: UIView) -> LoupeUIKitProperties {
         button: buttonProperties(for: view),
         textField: textFieldProperties(for: view),
         textView: textViewProperties(for: view),
+        scrollView: scrollViewProperties(for: view),
         switchControl: switchProperties(for: view),
         slider: sliderProperties(for: view),
         stepper: stepperProperties(for: view),
@@ -1980,6 +1981,32 @@ private func textViewProperties(for view: UIView) -> LoupeUITextViewProperties? 
         return nil
     }
     return LoupeUITextViewProperties(textAlignment: textAlignmentName(textView.textAlignment))
+}
+
+@MainActor
+private func scrollViewProperties(for view: UIView) -> LoupeUIScrollViewProperties? {
+    guard let scrollView = view as? UIScrollView else {
+        return nil
+    }
+    return LoupeUIScrollViewProperties(
+        contentOffset: LoupePoint(
+            x: finiteDouble(scrollView.contentOffset.x.doubleValue) ?? 0,
+            y: finiteDouble(scrollView.contentOffset.y.doubleValue) ?? 0
+        ),
+        contentSize: LoupeSize(
+            width: finiteDouble(scrollView.contentSize.width.doubleValue) ?? 0,
+            height: finiteDouble(scrollView.contentSize.height.doubleValue) ?? 0
+        ),
+        adjustedContentInset: LoupeInsets(
+            top: finiteDouble(scrollView.adjustedContentInset.top.doubleValue) ?? 0,
+            left: finiteDouble(scrollView.adjustedContentInset.left.doubleValue) ?? 0,
+            bottom: finiteDouble(scrollView.adjustedContentInset.bottom.doubleValue) ?? 0,
+            right: finiteDouble(scrollView.adjustedContentInset.right.doubleValue) ?? 0
+        ),
+        isScrollEnabled: scrollView.isScrollEnabled,
+        alwaysBounceVertical: scrollView.alwaysBounceVertical,
+        alwaysBounceHorizontal: scrollView.alwaysBounceHorizontal
+    )
 }
 
 @MainActor
