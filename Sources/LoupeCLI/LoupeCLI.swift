@@ -2365,12 +2365,27 @@ struct LoupeCLI {
         appendChange("frame", before.frame.map(rectSummary), after.frame.map(rectSummary), to: &changes)
         appendChange("style.alpha", before.style?.alpha, after.style?.alpha, to: &changes)
         appendChange("style.backgroundColor", before.style?.backgroundColor.map(colorSummary), after.style?.backgroundColor.map(colorSummary), to: &changes)
+        appendChange("style.tintColor", before.style?.tintColor.map(colorSummary), after.style?.tintColor.map(colorSummary), to: &changes)
         appendChange("style.textColor", before.style?.textColor.map(colorSummary), after.style?.textColor.map(colorSummary), to: &changes)
         appendChange("style.borderColor", before.style?.borderColor.map(colorSummary), after.style?.borderColor.map(colorSummary), to: &changes)
         appendChange("style.borderWidth", before.style?.borderWidth, after.style?.borderWidth, to: &changes)
         appendChange("style.cornerRadius", before.style?.cornerRadius, after.style?.cornerRadius, to: &changes)
         appendChange("style.fontName", before.style?.fontName, after.style?.fontName, to: &changes)
         appendChange("style.fontSize", before.style?.fontSize, after.style?.fontSize, to: &changes)
+        appendChange("style.shadowColor", before.style?.shadowColor.map(colorSummary), after.style?.shadowColor.map(colorSummary), to: &changes)
+        appendChange("style.shadowOpacity", before.style?.shadowOpacity, after.style?.shadowOpacity, to: &changes)
+        appendChange("style.shadowRadius", before.style?.shadowRadius, after.style?.shadowRadius, to: &changes)
+        appendChange("style.shadowOffset", before.style?.shadowOffset.map(sizeSummary), after.style?.shadowOffset.map(sizeSummary), to: &changes)
+        appendChange("uiKit.scrollView.contentOffset", before.uiKit?.scrollView.map { pointSummary($0.contentOffset) }, after.uiKit?.scrollView.map { pointSummary($0.contentOffset) }, to: &changes)
+        appendChange("uiKit.scrollView.contentSize", before.uiKit?.scrollView.map { sizeSummary($0.contentSize) }, after.uiKit?.scrollView.map { sizeSummary($0.contentSize) }, to: &changes)
+        appendChange("uiKit.scrollView.contentInset", before.uiKit?.scrollView.map { insetsSummary($0.contentInset) }, after.uiKit?.scrollView.map { insetsSummary($0.contentInset) }, to: &changes)
+        appendChange("uiKit.scrollView.adjustedContentInset", before.uiKit?.scrollView.map { insetsSummary($0.adjustedContentInset) }, after.uiKit?.scrollView.map { insetsSummary($0.adjustedContentInset) }, to: &changes)
+        appendChange("uiKit.scrollView.scrollIndicatorInsets", before.uiKit?.scrollView.map { insetsSummary($0.scrollIndicatorInsets) }, after.uiKit?.scrollView.map { insetsSummary($0.scrollIndicatorInsets) }, to: &changes)
+        appendChange("uiKit.scrollView.isScrollEnabled", before.uiKit?.scrollView?.isScrollEnabled, after.uiKit?.scrollView?.isScrollEnabled, to: &changes)
+        appendChange("uiKit.scrollView.isPagingEnabled", before.uiKit?.scrollView?.isPagingEnabled, after.uiKit?.scrollView?.isPagingEnabled, to: &changes)
+        appendChange("uiKit.scrollView.bounces", before.uiKit?.scrollView?.bounces, after.uiKit?.scrollView?.bounces, to: &changes)
+        appendChange("uiKit.scrollView.showsVerticalScrollIndicator", before.uiKit?.scrollView?.showsVerticalScrollIndicator, after.uiKit?.scrollView?.showsVerticalScrollIndicator, to: &changes)
+        appendChange("uiKit.scrollView.showsHorizontalScrollIndicator", before.uiKit?.scrollView?.showsHorizontalScrollIndicator, after.uiKit?.scrollView?.showsHorizontalScrollIndicator, to: &changes)
         appendChange("uiKit.switch.isOn", before.uiKit?.switchControl?.isOn, after.uiKit?.switchControl?.isOn, to: &changes)
         appendChange("uiKit.segmentedControl.selectedSegmentIndex", before.uiKit?.segmentedControl?.selectedSegmentIndex, after.uiKit?.segmentedControl?.selectedSegmentIndex, to: &changes)
         appendChange("uiKit.slider.value", before.uiKit?.slider?.value, after.uiKit?.slider?.value, to: &changes)
@@ -2400,6 +2415,18 @@ struct LoupeCLI {
 
     private static func colorSummary(_ color: LoupeColor) -> String {
         "rgba(\(format(color.red)),\(format(color.green)),\(format(color.blue)),\(format(color.alpha)))"
+    }
+
+    private static func pointSummary(_ point: LoupePoint) -> String {
+        "\(format(point.x)),\(format(point.y))"
+    }
+
+    private static func sizeSummary(_ size: LoupeSize) -> String {
+        "\(format(size.width)),\(format(size.height))"
+    }
+
+    private static func insetsSummary(_ insets: LoupeInsets) -> String {
+        "\(format(insets.top)),\(format(insets.left)),\(format(insets.bottom)),\(format(insets.right))"
     }
 
     private static func renderSnapshotDiff(_ diff: LoupeSnapshotDiff, limit: Int, changedOnly: Bool = false) -> String {
@@ -3062,7 +3089,11 @@ struct LoupeCLI {
             properties += ["pickerView.selectedRow"]
         }
         if node.uiKit?.scrollView != nil || node.role == "scrollView" {
-            properties += ["contentOffset", "contentSize", "contentInset", "scrollEnabled", "pagingEnabled"]
+            properties += [
+                "contentOffset", "contentSize", "contentInset", "scrollIndicatorInsets",
+                "scrollEnabled", "pagingEnabled", "bounces", "showsVerticalScrollIndicator",
+                "showsHorizontalScrollIndicator",
+            ]
         }
         if node.uiKit?.stackView != nil || (node.uiKit?.className ?? node.typeName) == "UIStackView" {
             properties += [

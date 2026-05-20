@@ -10,31 +10,46 @@ public enum LoupeNodeKind: String, Codable, Equatable {
 public struct LoupeStyle: Codable, Equatable {
     public var alpha: Double?
     public var backgroundColor: LoupeColor?
+    public var tintColor: LoupeColor?
     public var cornerRadius: Double?
     public var fontName: String?
     public var fontSize: Double?
     public var textColor: LoupeColor?
     public var borderColor: LoupeColor?
     public var borderWidth: Double?
+    public var shadowColor: LoupeColor?
+    public var shadowOpacity: Double?
+    public var shadowRadius: Double?
+    public var shadowOffset: LoupeSize?
 
     public init(
         alpha: Double? = nil,
         backgroundColor: LoupeColor? = nil,
+        tintColor: LoupeColor? = nil,
         cornerRadius: Double? = nil,
         fontName: String? = nil,
         fontSize: Double? = nil,
         textColor: LoupeColor? = nil,
         borderColor: LoupeColor? = nil,
-        borderWidth: Double? = nil
+        borderWidth: Double? = nil,
+        shadowColor: LoupeColor? = nil,
+        shadowOpacity: Double? = nil,
+        shadowRadius: Double? = nil,
+        shadowOffset: LoupeSize? = nil
     ) {
         self.alpha = alpha
         self.backgroundColor = backgroundColor
+        self.tintColor = tintColor
         self.cornerRadius = cornerRadius
         self.fontName = fontName
         self.fontSize = fontSize
         self.textColor = textColor
         self.borderColor = borderColor
         self.borderWidth = borderWidth
+        self.shadowColor = shadowColor
+        self.shadowOpacity = shadowOpacity
+        self.shadowRadius = shadowRadius
+        self.shadowOffset = shadowOffset
     }
 }
 
@@ -128,25 +143,43 @@ public struct LoupeUITextViewProperties: Codable, Equatable {
 public struct LoupeUIScrollViewProperties: Codable, Equatable {
     public var contentOffset: LoupePoint
     public var contentSize: LoupeSize
+    public var contentInset: LoupeInsets
     public var adjustedContentInset: LoupeInsets
+    public var scrollIndicatorInsets: LoupeInsets
     public var isScrollEnabled: Bool
+    public var isPagingEnabled: Bool
+    public var bounces: Bool
     public var alwaysBounceVertical: Bool
     public var alwaysBounceHorizontal: Bool
+    public var showsVerticalScrollIndicator: Bool
+    public var showsHorizontalScrollIndicator: Bool
 
     public init(
         contentOffset: LoupePoint,
         contentSize: LoupeSize,
+        contentInset: LoupeInsets = LoupeInsets(top: 0, left: 0, bottom: 0, right: 0),
         adjustedContentInset: LoupeInsets,
+        scrollIndicatorInsets: LoupeInsets = LoupeInsets(top: 0, left: 0, bottom: 0, right: 0),
         isScrollEnabled: Bool,
+        isPagingEnabled: Bool = false,
+        bounces: Bool = true,
         alwaysBounceVertical: Bool,
-        alwaysBounceHorizontal: Bool
+        alwaysBounceHorizontal: Bool,
+        showsVerticalScrollIndicator: Bool = true,
+        showsHorizontalScrollIndicator: Bool = true
     ) {
         self.contentOffset = contentOffset
         self.contentSize = contentSize
+        self.contentInset = contentInset
         self.adjustedContentInset = adjustedContentInset
+        self.scrollIndicatorInsets = scrollIndicatorInsets
         self.isScrollEnabled = isScrollEnabled
+        self.isPagingEnabled = isPagingEnabled
+        self.bounces = bounces
         self.alwaysBounceVertical = alwaysBounceVertical
         self.alwaysBounceHorizontal = alwaysBounceHorizontal
+        self.showsVerticalScrollIndicator = showsVerticalScrollIndicator
+        self.showsHorizontalScrollIndicator = showsHorizontalScrollIndicator
     }
 }
 

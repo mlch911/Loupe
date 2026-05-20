@@ -890,6 +890,22 @@ private func mutationPropertyValue(_ property: String, in node: LoupeNode) -> Lo
         return .bool(!node.isVisible)
     case "backgroundcolor", "style.backgroundcolor":
         return node.style?.backgroundColor.map(LoupeMutationValue.color)
+    case "tintcolor", "style.tintcolor":
+        return node.style?.tintColor.map(LoupeMutationValue.color)
+    case "bordercolor", "layer.bordercolor", "style.bordercolor":
+        return node.style?.borderColor.map(LoupeMutationValue.color)
+    case "borderwidth", "layer.borderwidth", "style.borderwidth":
+        return node.style?.borderWidth.map(LoupeMutationValue.double)
+    case "cornerradius", "layer.cornerradius", "style.cornerradius":
+        return node.style?.cornerRadius.map(LoupeMutationValue.double)
+    case "shadowcolor", "layer.shadowcolor":
+        return node.style?.shadowColor.map(LoupeMutationValue.color)
+    case "shadowopacity", "layer.shadowopacity":
+        return node.style?.shadowOpacity.map(LoupeMutationValue.double)
+    case "shadowradius", "layer.shadowradius":
+        return node.style?.shadowRadius.map(LoupeMutationValue.double)
+    case "shadowoffset", "layer.shadowoffset":
+        return node.style?.shadowOffset.map(LoupeMutationValue.size)
     case "text", "label.text", "textfield.text", "textview.text", "uikit.text":
         return node.text.map(LoupeMutationValue.string)
     case "placeholder", "textfield.placeholder", "searchbar.placeholder":
@@ -922,9 +938,31 @@ private func mutationPropertyValue(_ property: String, in node: LoupeNode) -> Lo
         return node.uiKit?.stackView.map { .double($0.spacing) }
     case "stack.layoutmarginsrelativearrangement", "stackview.layoutmarginsrelativearrangement":
         return node.uiKit?.stackView.map { .bool($0.isLayoutMarginsRelativeArrangement) }
+    case "contentoffset", "scrollview.contentoffset":
+        return node.uiKit?.scrollView.map { .point($0.contentOffset) }
+    case "contentsize", "scrollview.contentsize":
+        return node.uiKit?.scrollView.map { .size($0.contentSize) }
+    case "contentinset", "scrollview.contentinset":
+        return node.uiKit?.scrollView.map { .rect(mutationRect(from: $0.contentInset)) }
+    case "scrollindicatorinsets", "scrollview.scrollindicatorinsets":
+        return node.uiKit?.scrollView.map { .rect(mutationRect(from: $0.scrollIndicatorInsets)) }
+    case "scrollenabled", "isscrollenabled", "scrollview.isscrollenabled":
+        return node.uiKit?.scrollView.map { .bool($0.isScrollEnabled) }
+    case "pagingenabled", "ispagingenabled", "scrollview.ispagingenabled":
+        return node.uiKit?.scrollView.map { .bool($0.isPagingEnabled) }
+    case "bounces", "scrollview.bounces":
+        return node.uiKit?.scrollView.map { .bool($0.bounces) }
+    case "showshorizontalscrollindicator":
+        return node.uiKit?.scrollView.map { .bool($0.showsHorizontalScrollIndicator) }
+    case "showsverticalscrollindicator":
+        return node.uiKit?.scrollView.map { .bool($0.showsVerticalScrollIndicator) }
     default:
         return nil
     }
+}
+
+private func mutationRect(from insets: LoupeInsets) -> LoupeRect {
+    LoupeRect(x: insets.top, y: insets.left, width: insets.bottom, height: insets.right)
 }
 
 private func mutationValuesApproximatelyEqual(_ requested: LoupeMutationValue, _ effective: LoupeMutationValue) -> Bool {
@@ -1338,6 +1376,12 @@ private var scrollMutationDescriptors: [LoupeMutationDescriptor] {
                 throw unsupportedProperty("pagingEnabled", view: view)
             }
             scrollView.isPagingEnabled = try boolValue(value)
+        },
+        mutation(["bounces", "scrollView.bounces"]) { view, value in
+            guard let scrollView = view as? UIScrollView else {
+                throw unsupportedProperty("bounces", view: view)
+            }
+            scrollView.bounces = try boolValue(value)
         },
         mutation(["showsHorizontalScrollIndicator"]) { view, value in
             guard let scrollView = view as? UIScrollView else {
@@ -1835,13 +1879,79 @@ private func style(for view: UIView) -> LoupeStyle {
     LoupeStyle(
         alpha: finiteDouble(view.alpha.doubleValue),
         backgroundColor: loupeColor(from: view.backgroundColor, traitCollection: view.traitCollection),
+        tintColor: capturedTintColor(for: view).flatMap { loupeColor(from: $0, traitCollection: view.traitCollection) },
         cornerRadius: finiteDouble(view.layer.cornerRadius.doubleValue),
         fontName: font(for: view)?.fontName,
         fontSize: font(for: view).flatMap { finiteDouble($0.pointSize.doubleValue) },
         textColor: loupeColor(from: textColor(for: view), traitCollection: view.traitCollection),
         borderColor: loupeColor(from: borderColor(for: view), traitCollection: view.traitCollection),
-        borderWidth: finiteDouble(view.layer.borderWidth.doubleValue)
+        borderWidth: finiteDouble(view.layer.borderWidth.doubleValue),
+        shadowColor: capturedShadowColor(for: view).flatMap { loupeColor(from: $0, traitCollection: view.traitCollection) },
+        shadowOpacity: capturedShadowOpacity(for: view),
+        shadowRadius: capturedShadowRadius(for: view),
+        shadowOffset: capturedShadowOffset(for: view)
     )
+}
+
+@MainActor
+private func capturedTintColor(for view: UIView) -> UIColor? {
+    guard view is UIControl
+        || view is UIImageView
+        || view is UINavigationBar
+        || view is UIToolbar
+        || view is UITabBar
+        || view.tintColorDiffersFromSuperview else {
+        return nil
+    }
+    return view.tintColor
+}
+
+private extension UIView {
+    var tintColorDiffersFromSuperview: Bool {
+        guard let superview else {
+            return false
+        }
+        return !tintColor.isEqual(superview.tintColor)
+    }
+}
+
+@MainActor
+private func capturedShadowColor(for view: UIView) -> UIColor? {
+    guard layerHasVisibleShadow(view.layer), let cgColor = view.layer.shadowColor else {
+        return nil
+    }
+    return UIColor(cgColor: cgColor)
+}
+
+@MainActor
+private func capturedShadowOpacity(for view: UIView) -> Double? {
+    guard layerHasVisibleShadow(view.layer) else {
+        return nil
+    }
+    return finiteDouble(Double(view.layer.shadowOpacity))
+}
+
+@MainActor
+private func capturedShadowRadius(for view: UIView) -> Double? {
+    guard layerHasVisibleShadow(view.layer) else {
+        return nil
+    }
+    return finiteDouble(view.layer.shadowRadius.doubleValue)
+}
+
+@MainActor
+private func capturedShadowOffset(for view: UIView) -> LoupeSize? {
+    guard layerHasVisibleShadow(view.layer) else {
+        return nil
+    }
+    return LoupeSize(
+        width: finiteDouble(view.layer.shadowOffset.width.doubleValue) ?? 0,
+        height: finiteDouble(view.layer.shadowOffset.height.doubleValue) ?? 0
+    )
+}
+
+private func layerHasVisibleShadow(_ layer: CALayer) -> Bool {
+    layer.shadowOpacity > 0
 }
 
 @MainActor
@@ -2313,15 +2423,30 @@ private func scrollViewProperties(for view: UIView) -> LoupeUIScrollViewProperti
             width: finiteDouble(scrollView.contentSize.width.doubleValue) ?? 0,
             height: finiteDouble(scrollView.contentSize.height.doubleValue) ?? 0
         ),
+        contentInset: loupeInsets(from: scrollView.contentInset),
         adjustedContentInset: LoupeInsets(
             top: finiteDouble(scrollView.adjustedContentInset.top.doubleValue) ?? 0,
             left: finiteDouble(scrollView.adjustedContentInset.left.doubleValue) ?? 0,
             bottom: finiteDouble(scrollView.adjustedContentInset.bottom.doubleValue) ?? 0,
             right: finiteDouble(scrollView.adjustedContentInset.right.doubleValue) ?? 0
         ),
+        scrollIndicatorInsets: loupeInsets(from: scrollView.scrollIndicatorInsets),
         isScrollEnabled: scrollView.isScrollEnabled,
+        isPagingEnabled: scrollView.isPagingEnabled,
+        bounces: scrollView.bounces,
         alwaysBounceVertical: scrollView.alwaysBounceVertical,
-        alwaysBounceHorizontal: scrollView.alwaysBounceHorizontal
+        alwaysBounceHorizontal: scrollView.alwaysBounceHorizontal,
+        showsVerticalScrollIndicator: scrollView.showsVerticalScrollIndicator,
+        showsHorizontalScrollIndicator: scrollView.showsHorizontalScrollIndicator
+    )
+}
+
+private func loupeInsets(from insets: UIEdgeInsets) -> LoupeInsets {
+    LoupeInsets(
+        top: finiteDouble(insets.top.doubleValue) ?? 0,
+        left: finiteDouble(insets.left.doubleValue) ?? 0,
+        bottom: finiteDouble(insets.bottom.doubleValue) ?? 0,
+        right: finiteDouble(insets.right.doubleValue) ?? 0
     )
 }
 

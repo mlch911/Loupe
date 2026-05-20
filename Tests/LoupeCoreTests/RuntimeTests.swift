@@ -15,6 +15,12 @@ struct RuntimeTests {
             isVisible: true,
             isEnabled: true,
             isInteractive: true,
+            style: LoupeStyle(
+                tintColor: LoupeColor(red: 0, green: 0.478, blue: 1, alpha: 1),
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                shadowOffset: LoupeSize(width: 0, height: 2)
+            ),
             accessibility: LoupeAccessibility(
                 identifier: "checkout.payButton",
                 label: "Pay",
@@ -48,6 +54,9 @@ struct RuntimeTests {
         #expect(node.uiKit?.className == "UIButton")
         #expect(node.uiKit?.control?.controlEvents == ["touchUpInside"])
         #expect(node.uiKit?.label?.textAlignment == "center")
+        #expect(node.style?.tintColor?.blue == 1)
+        #expect(node.style?.shadowRadius == 8)
+        #expect(node.style?.shadowOffset == LoupeSize(width: 0, height: 2))
     }
 
     @Test func snapshotNodeCanCarryExtendedUIKitComponentProperties() {
@@ -71,6 +80,20 @@ struct RuntimeTests {
                 clipsToBounds: false,
                 userInteractionEnabled: true,
                 isFirstResponder: false,
+                scrollView: LoupeUIScrollViewProperties(
+                    contentOffset: LoupePoint(x: 0, y: 240),
+                    contentSize: LoupeSize(width: 350, height: 1_240),
+                    contentInset: LoupeInsets(top: 12, left: 0, bottom: 20, right: 0),
+                    adjustedContentInset: LoupeInsets(top: 12, left: 0, bottom: 34, right: 0),
+                    scrollIndicatorInsets: LoupeInsets(top: 12, left: 0, bottom: 34, right: 0),
+                    isScrollEnabled: true,
+                    isPagingEnabled: false,
+                    bounces: true,
+                    alwaysBounceVertical: true,
+                    alwaysBounceHorizontal: false,
+                    showsVerticalScrollIndicator: true,
+                    showsHorizontalScrollIndicator: false
+                ),
                 stepper: LoupeUIStepperProperties(value: 4, stepValue: 2),
                 datePicker: LoupeUIDatePickerProperties(mode: "date", date: date),
                 pageControl: LoupeUIPageControlProperties(currentPage: 2, numberOfPages: 5),
@@ -100,6 +123,9 @@ struct RuntimeTests {
         #expect(node.uiKit?.pickerView?.selectedRows == [1])
         #expect(node.uiKit?.tabBar?.items == ["Home", "Search"])
         #expect(node.uiKit?.tabBar?.selectedItem == "Home")
+        #expect(node.uiKit?.scrollView?.contentInset.bottom == 20)
+        #expect(node.uiKit?.scrollView?.scrollIndicatorInsets.bottom == 34)
+        #expect(node.uiKit?.scrollView?.showsHorizontalScrollIndicator == false)
         #expect(node.uiKit?.webView?.url == "https://loupe.local/fixture")
         #expect(node.uiKit?.webView?.title == "Web Fixture")
     }
