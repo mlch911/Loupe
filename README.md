@@ -10,8 +10,14 @@ metadata, screenshots, and simulator input.
 
 ## Demo
 
-https://github.com/user-attachments/assets/8bdc57f4-f673-480c-b970-535cfc96012c
+<img width="1051" height="806" alt="loupe" src="https://github.com/user-attachments/assets/4a079742-996d-46ab-b5b4-7eedc618fa7e" />
 
+<details>
+<summary>Video</summary>
+
+<video src="https://github.com/user-attachments/assets/8bdc57f4-f673-480c-b970-535cfc96012c" controls width="720"></video>
+
+</details>
 
 ## Install
 
