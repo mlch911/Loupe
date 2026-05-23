@@ -122,12 +122,14 @@ INSPECT_PATH="/tmp/loupe-native-inspect.json"
 AUDIT_PATH="/tmp/loupe-native-audit.json"
 SUBTREE_PATH="/tmp/loupe-native-subtree.json"
 TRACE_DIR="/tmp/loupe-native-trace"
+TRACE_SUMMARY_PATH="/tmp/loupe-native-trace-summary.txt"
 FRAME_MUTATION_PATH="/tmp/loupe-native-frame-mutation.json"
 LAYOUT_MUTATION_PATH="/tmp/loupe-native-layout-mutation.json"
 STACK_MUTATION_PATH="/tmp/loupe-native-stack-mutation.json"
 CONSTRAINTS_PATH="/tmp/loupe-native-constraints.json"
 CONSTRAINT_MUTATION_PATH="/tmp/loupe-native-constraint-mutation.json"
 CONSTRAINT_DEACTIVATE_PATH="/tmp/loupe-native-constraint-deactivate.json"
+rm -rf "$TRACE_DIR"
 
 launch_app() {
   local route="${1:-}"
@@ -229,9 +231,13 @@ launch_app
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id example.components --timeout 5 >/tmp/loupe-native-wait-components.json
 fetch_snapshot
 assert_query example.components /tmp/loupe-native-components-query.json
+test -f "$TRACE_DIR/before-logs.json"
+test -f "$TRACE_DIR/after-logs.json"
 test -f "$TRACE_DIR/action-target.json"
 grep -q '"phase" : "target"' "$TRACE_DIR/action-target.json"
 grep -q '"resolvedTarget"' "$TRACE_DIR/action-target.json"
+.build/debug/loupe trace-summary "$TRACE_DIR" > "$TRACE_SUMMARY_PATH"
+grep -q "example_components_visible" "$TRACE_SUMMARY_PATH"
 .build/debug/loupe subtree "$SNAPSHOT_PATH" --test-id example.components --depth 4 > "$SUBTREE_PATH"
 grep -q '"root"' "$SUBTREE_PATH"
 grep -q '"example.components.switch"' "$SUBTREE_PATH"

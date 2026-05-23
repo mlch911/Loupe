@@ -8,6 +8,12 @@ public struct LoupePoint: Codable, Equatable {
         self.x = x
         self.y = y
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sanitizeGeometryDouble(x), forKey: .x)
+        try container.encode(sanitizeGeometryDouble(y), forKey: .y)
+    }
 }
 
 public struct LoupeSize: Codable, Equatable {
@@ -17,6 +23,12 @@ public struct LoupeSize: Codable, Equatable {
     public init(width: Double, height: Double) {
         self.width = width
         self.height = height
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sanitizeGeometryDouble(width), forKey: .width)
+        try container.encode(sanitizeGeometryDouble(height), forKey: .height)
     }
 }
 
@@ -36,6 +48,14 @@ public struct LoupeRect: Codable, Equatable {
     public var maxX: Double { x + width }
     public var maxY: Double { y + height }
     public var isEmpty: Bool { width <= 0 || height <= 0 }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sanitizeGeometryDouble(x), forKey: .x)
+        try container.encode(sanitizeGeometryDouble(y), forKey: .y)
+        try container.encode(sanitizeGeometryDouble(width), forKey: .width)
+        try container.encode(sanitizeGeometryDouble(height), forKey: .height)
+    }
 
     public func intersects(_ other: LoupeRect) -> Bool {
         guard !isEmpty, !other.isEmpty else { return false }
@@ -70,6 +90,14 @@ public struct LoupeInsets: Codable, Equatable {
         self.bottom = bottom
         self.right = right
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sanitizeGeometryDouble(top), forKey: .top)
+        try container.encode(sanitizeGeometryDouble(left), forKey: .left)
+        try container.encode(sanitizeGeometryDouble(bottom), forKey: .bottom)
+        try container.encode(sanitizeGeometryDouble(right), forKey: .right)
+    }
 }
 
 public struct LoupeColor: Codable, Equatable {
@@ -84,4 +112,11 @@ public struct LoupeColor: Codable, Equatable {
         self.blue = blue
         self.alpha = alpha
     }
+}
+
+private func sanitizeGeometryDouble(_ value: Double) -> Double {
+    guard value.isFinite, abs(value) <= 1_000_000 else {
+        return 0
+    }
+    return (value * 100).rounded() / 100
 }

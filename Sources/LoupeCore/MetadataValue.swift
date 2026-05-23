@@ -1,6 +1,6 @@
 import Foundation
 
-public enum LoupeMetadataValue: Codable, Equatable {
+public enum LoupeMetadataValue: Codable, Equatable, Sendable {
     case string(String)
     case bool(Bool)
     case int(Int)

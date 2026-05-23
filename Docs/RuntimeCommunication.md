@@ -27,6 +27,10 @@ When an app links `LoupeKit`, it can call the Swift APIs directly. When Loupe is
 injected and the app does not import `LoupeKit`, app code can still send logs and
 view metadata through `NotificationCenter` string names.
 
+Injected runtimes install the notification bridge before the localhost server is
+started, so app lifecycle logs posted during the first visible screen can be read
+through `/logs` or `loupe logs`.
+
 ```swift
 NotificationCenter.default.post(
     name: Notification.Name("dev.loupe.log"),
@@ -37,6 +41,12 @@ NotificationCenter.default.post(
         "metadata": ["cartID": "cart-123", "itemCount": 3]
     ]
 )
+```
+
+Fetch the collected runtime logs from the host:
+
+```bash
+loupe logs --bundle-id com.example.App --output /tmp/loupe-logs.json
 ```
 
 Attach metadata to a concrete UIKit view:

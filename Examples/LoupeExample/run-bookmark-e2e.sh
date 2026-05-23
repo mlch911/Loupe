@@ -137,6 +137,7 @@ OBSERVATION_PATH="/tmp/loupe-bookmark-observation.json"
 INSPECT_PATH="/tmp/loupe-bookmark-inspect.json"
 AUDIT_PATH="/tmp/loupe-bookmark-audit.json"
 TRACE_DIR="/tmp/loupe-bookmark-trace"
+rm -rf "$TRACE_DIR"
 
 fetch_snapshot() {
   .build/debug/loupe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
@@ -189,6 +190,7 @@ fi
 AUTO_TRACE_DIR="$(awk '/^trace: / { print $2 }' /tmp/loupe-bookmark-missing-tap.err | tail -1)"
 test -f "$AUTO_TRACE_DIR/error.json"
 test -f "$AUTO_TRACE_DIR/failure-snapshot.json"
+test -f "$AUTO_TRACE_DIR/failure-logs.json"
 .build/debug/loupe trace-summary "$AUTO_TRACE_DIR" >/tmp/loupe-bookmark-failure-trace-summary.txt
 grep -q "bookmark.missing" "$AUTO_TRACE_DIR/action-failure.json"
 grep -q "No Loupe accessibility or view node matched selector" /tmp/loupe-bookmark-failure-trace-summary.txt
@@ -196,6 +198,8 @@ grep -q "No Loupe accessibility or view node matched selector" /tmp/loupe-bookma
 echo "case: bookmark detail by testID tap and back by ref tap"
 .build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.item.swift --trace-dir "$TRACE_DIR" --expect-visible bookmark.detail
 test -f "$TRACE_DIR/target-crop.png"
+test -f "$TRACE_DIR/before-logs.json"
+test -f "$TRACE_DIR/after-logs.json"
 .build/debug/loupe trace-summary "$TRACE_DIR" >/tmp/loupe-bookmark-action-trace-summary.txt
 grep -q "bookmark.detail" /tmp/loupe-bookmark-action-trace-summary.txt
 .build/debug/loupe diff "$TRACE_DIR/before-snapshot.json" "$TRACE_DIR/after-snapshot.json" >/tmp/loupe-bookmark-action-diff.txt

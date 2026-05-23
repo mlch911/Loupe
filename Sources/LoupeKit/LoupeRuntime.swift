@@ -81,33 +81,60 @@ public final class LoupeRuntime {
         didInstallBridge = true
     }
 
-    @objc private func receiveLogNotification(_ notification: Notification) {
-        let userInfo = notification.userInfo ?? [:]
-        guard let message = nonEmpty(userInfo["message"] as? String) else {
+    @objc private nonisolated func receiveLogNotification(_ notification: Notification) {
+        guard let payload = LoupeLogNotificationPayload(notification: notification) else {
             return
         }
 
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.receiveLogPayload(payload)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.receiveLogPayload(payload)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func receiveLogPayload(_ payload: LoupeLogNotificationPayload) {
         log(
-            level: nonEmpty(userInfo["level"] as? String) ?? "info",
-            message,
-            metadata: metadataPayload(from: userInfo)
+            level: payload.level,
+            payload.message,
+            metadata: payload.metadata
         )
     }
 
-    @objc private func receiveViewMetadataNotification(_ notification: Notification) {
-        let userInfo = notification.userInfo ?? [:]
-        let metadata = metadataPayload(from: userInfo)
-        guard !metadata.isEmpty else {
+    @objc private nonisolated func receiveViewMetadataNotification(_ notification: Notification) {
+        guard let payload = LoupeViewMetadataNotificationPayload(notification: notification) else {
             return
         }
 
-        if let view = (notification.object as? UIView) ?? (userInfo["view"] as? UIView) {
-            view.loupeMetadata.merge(metadata) { _, new in new }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.receiveViewMetadataPayload(payload)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.receiveViewMetadataPayload(payload)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func receiveViewMetadataPayload(_ payload: LoupeViewMetadataNotificationPayload) {
+        if let view = payload.view {
+            view.loupeMetadata.merge(payload.metadata) { _, new in new }
         }
 
-        if let testID = nonEmpty(userInfo["testID"] as? String ?? userInfo["id"] as? String) {
+        if let testID = payload.testID {
             var existing = metadataByTestID[testID] ?? [:]
-            existing.merge(metadata) { _, new in new }
+            existing.merge(payload.metadata) { _, new in new }
             metadataByTestID[testID] = existing
         }
     }
@@ -171,6 +198,41 @@ private func loupeMetadataValue(from value: Any) -> LoupeMetadataValue? {
         return .double(doubleValue)
     default:
         return nil
+    }
+}
+
+private struct LoupeLogNotificationPayload: Sendable {
+    var level: String
+    var message: String
+    var metadata: [String: LoupeMetadataValue]
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let message = nonEmpty(userInfo["message"] as? String) else {
+            return nil
+        }
+
+        self.level = nonEmpty(userInfo["level"] as? String) ?? "info"
+        self.message = message
+        self.metadata = metadataPayload(from: userInfo)
+    }
+}
+
+private struct LoupeViewMetadataNotificationPayload: @unchecked Sendable {
+    var view: UIView?
+    var testID: String?
+    var metadata: [String: LoupeMetadataValue]
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        let metadata = metadataPayload(from: userInfo)
+        guard !metadata.isEmpty else {
+            return nil
+        }
+
+        self.view = (notification.object as? UIView) ?? (userInfo["view"] as? UIView)
+        self.testID = nonEmpty(userInfo["testID"] as? String ?? userInfo["id"] as? String)
+        self.metadata = metadata
     }
 }
 

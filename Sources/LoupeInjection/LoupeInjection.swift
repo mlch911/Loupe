@@ -6,9 +6,19 @@ import UIKit
 
 @_cdecl("LoupeInjectorStart")
 public func LoupeInjectorStart() {
-    DispatchQueue.main.async {
-        Task { @MainActor in
+    runLoupeInjectorStartOnMainActor()
+}
+
+private func runLoupeInjectorStartOnMainActor() {
+    if Thread.isMainThread {
+        MainActor.assumeIsolated {
             LoupeInjectedRuntime.shared.start()
+        }
+    } else {
+        DispatchQueue.main.sync {
+            MainActor.assumeIsolated {
+                LoupeInjectedRuntime.shared.start()
+            }
         }
     }
 }
@@ -22,6 +32,8 @@ private final class LoupeInjectedRuntime {
     private init() {}
 
     func start() {
+        LoupeRuntime.shared.activateBridge()
+
         guard server == nil else {
             return
         }

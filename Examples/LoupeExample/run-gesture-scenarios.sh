@@ -22,6 +22,7 @@ fi
 HOST=""
 SNAPSHOT_PATH="/tmp/loupe-gesture-snapshot.json"
 TRACE_DIR="/tmp/loupe-gesture-bottomsheet-scroll-trace"
+rm -rf "$TRACE_DIR"
 
 run_with_timeout() {
   local seconds="$1"

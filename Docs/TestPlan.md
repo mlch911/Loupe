@@ -18,6 +18,7 @@ Actions required check. It runs:
 
 - `swift test`
 - `swift build --configuration release --disable-sandbox --product loupe`
+- `Examples/LoupeExample/run-injected.sh`
 - `Examples/LoupeExample/run-runtime-e2e.sh`
 - `Examples/LoupeExample/run-native-scenarios.sh`
 - `Examples/LoupeExample/run-bookmark-e2e.sh`
@@ -135,6 +136,9 @@ does not count as evidence that the CLI or skill improved agent performance.
 - Injection communication:
   apps can post `dev.loupe.log` and `dev.loupe.viewMetadata` notifications to
   send custom logs and metadata without importing `LoupeKit`.
+  `Examples/LoupeExample/run-injected.sh` verifies that the injected bridge
+  captures an app-posted `dev.loupe.log`, that `loupe logs` can fetch it, and
+  that view metadata is present in `loupe inspect` output.
 - Basic action traces for public CLI actions:
   `--trace-dir <path>` saves before/after view snapshots, accessibility trees,
   runtime logs, screenshots, action records, and the resolved target query result

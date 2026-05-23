@@ -32,7 +32,7 @@ import Testing
         #expect(output.contains("USAGE: loupe <subcommand>"))
         #expect(output.contains("RUNTIME SUBCOMMANDS:"))
         #expect(output.contains("See 'loupe help <subcommand>' for detailed help."))
-        #expect(LoupeCLI.summaryHelpLineCount(version: "1.2.3") <= 45)
+        #expect(LoupeCLI.summaryHelpLineCount(version: "1.2.3") <= 50)
         #expect(!output.contains("accessibility <snapshot.json>"))
         #expect(!output.contains("wait-for-value"))
     }
@@ -41,11 +41,16 @@ import Testing
         let expectedUsage: [String: String] = [
             "start": "Usage: loupe start --bundle-id <id> [--device <sim>|--udid <sim>] [--port <port>] [--env KEY=VALUE] [--timeout <seconds>]",
             "capture-report": "Usage: loupe capture-report [--host <url>] [--udid <sim>] [--bundle-id <id>] --output <dir> [--screen-map-limit <n>] [--timeout <seconds>]",
+            "logs": "Usage: loupe logs [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]",
             "tree": "Usage: loupe tree [snapshot.json] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--view|--accessibility] [--depth <n>]",
-            "tap": "Usage: loupe tap (--test-id <id> | --ref <ref> | --x <n> --y <n>) --udid <sim> [--snapshot <snapshot.json>] [--expect-visible <testID>]",
+            "tap": "Usage: loupe tap (--test-id <id> | --ref <ref> | --x <n> --y <n>) --udid <sim> [--host <url>] [--snapshot <snapshot.json>] [--trace-dir <path>] [--expect-visible <testID>]",
             "swipe": "Usage: loupe swipe --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--no-verify-scroll] [--trace-dir <path>]",
             "drag": "Usage: loupe drag --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>]",
             "type": "Usage: loupe type <text> --udid <sim> [--host <url>] [--trace-dir <path>]",
+            "trace-summary": "Usage: loupe trace-summary <trace-dir> [--json] [--limit <n>]",
+            "diff": "Usage: loupe diff <before-snapshot.json> <after-snapshot.json> [--json] [--changed-only] [--limit <n>]",
+            "screenshot": "Usage: loupe screenshot --udid <sim> --output <path> [--timeout <seconds>]",
+            "cleanup": "Usage: loupe cleanup [--dry-run] [--no-runtimes] [--no-traces] [--traces-older-than <duration>|--all-traces] [--timeout <seconds>]",
             "set": "Usage: loupe set (--test-id <id> | --ref <ref> | --role <role> | --text <text>) <property> <value> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]",
             "set-many": "Usage: loupe set-many (--refs <refs> | --type-name <name> | --role <role>) <property> (--value <value> | --number <n> | --bool <bool> | --color <color> | --colors <colors>)",
             "mutations": "Usage: loupe mutations [--host <url>] [--udid <sim>] [--bundle-id <id>]",
@@ -62,11 +67,16 @@ import Testing
         let publicCommands = [
             "start",
             "capture-report",
+            "logs",
             "tree",
             "tap",
             "swipe",
             "drag",
             "type",
+            "trace-summary",
+            "diff",
+            "screenshot",
+            "cleanup",
             "set",
             "set-many",
             "mutations",

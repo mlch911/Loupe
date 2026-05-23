@@ -59,7 +59,11 @@ struct LoupeCLI {
         case "install-skills":
             try skills(["install"] + arguments)
         case "logs":
-            try await runtimeFetch(arguments, path: "/logs", usage: "loupe logs [--host <url>] [--udid <sim>] [--output <path>]")
+            try await runtimeFetch(
+                arguments,
+                path: "/logs",
+                usage: "loupe logs [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
         case "apps", "runtimes":
             try await runtimes(arguments)
         case "injector-path":
@@ -217,6 +221,7 @@ struct LoupeCLI {
         let compactURL = options.outputDirectory.appendingPathComponent("compact.json")
         let auditURL = options.outputDirectory.appendingPathComponent("audit.json")
         let runtimeURL = options.outputDirectory.appendingPathComponent("runtime.json")
+        let logsURL = options.outputDirectory.appendingPathComponent("logs.json")
         let summaryURL = options.outputDirectory.appendingPathComponent("summary.json")
         let summaryMarkdownURL = options.outputDirectory.appendingPathComponent("summary.md")
 
@@ -227,6 +232,13 @@ struct LoupeCLI {
         try writeJSON(audit, to: auditURL)
         if let runtimeState {
             try writeJSON(runtimeState, to: runtimeURL)
+        }
+        let didWriteLogs: Bool
+        do {
+            try await writeRuntimeTracePayload(host: host, path: "logs", to: logsURL)
+            didWriteLogs = true
+        } catch {
+            didWriteLogs = false
         }
 
         let screenshotUDID = options.udid ?? runtimeState?.identity.simulatorUDID ?? "booted"
@@ -247,6 +259,7 @@ struct LoupeCLI {
                 compact: compactURL.path,
                 audit: auditURL.path,
                 runtime: runtimeState == nil ? nil : runtimeURL.path,
+                logs: didWriteLogs ? logsURL.path : nil,
                 summaryMarkdown: summaryMarkdownURL.path
             ),
             counts: CaptureReportCounts(
@@ -275,6 +288,9 @@ struct LoupeCLI {
         print("screenshot: \(screenshotURL.path)")
         print("summary: \(summaryURL.path)")
         print("screen-map: \(screenMapURL.path)")
+        if didWriteLogs {
+            print("logs: \(logsURL.path)")
+        }
     }
 
     private static func captureReportScrollViews(_ snapshot: LoupeSnapshot) -> [CaptureReportScrollView] {
@@ -917,12 +933,16 @@ struct LoupeCLI {
           tree                    Print view or accessibility trees.
           inspect                 Inspect one matched node with local context.
           query                   Query a snapshot by selector.
+          logs                    Fetch app-authored Loupe runtime logs.
+          screenshot              Save a simulator screenshot to a path.
 
         ACT SUBCOMMANDS:
           tap                     Tap a selector, ref, or coordinate.
           swipe, drag             Dispatch one-finger simulator gestures.
           type                    Type text into the focused field.
           explore-routes          Probe visible route-like controls.
+          trace-summary           Summarize action trace artifacts.
+          diff                    Compare before/after snapshots.
 
         MUTATE SUBCOMMANDS:
           mutations               List supported runtime mutations.
@@ -933,6 +953,7 @@ struct LoupeCLI {
         OTHER SUBCOMMANDS:
           doctor                  Check local installation health.
           injector-path           Print the resolved injector path.
+          cleanup                 Prune stale runtime records and traces.
           skills                  Install the Loupe agent skill.
           version                 Show the current Loupe version.
 
@@ -987,6 +1008,8 @@ struct LoupeCLI {
             return MutationSetOptions.usage
         case "capture-report":
             return "Usage: loupe capture-report [--host <url>] [--udid <sim>] [--bundle-id <id>] --output <dir> [--screen-map-limit <n>] [--timeout <seconds>]"
+        case "logs":
+            return "Usage: loupe logs [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
         case "diff":
             return "Usage: loupe diff <before-snapshot.json> <after-snapshot.json> [--json] [--changed-only] [--limit <n>]"
         case "explore-routes":
@@ -994,7 +1017,7 @@ struct LoupeCLI {
         case "trace-summary":
             return "Usage: loupe trace-summary <trace-dir> [--json] [--limit <n>]"
         case "tap":
-            return "Usage: loupe tap (--test-id <id> | --ref <ref> | --x <n> --y <n>) --udid <sim> [--snapshot <snapshot.json>] [--expect-visible <testID>]"
+            return "Usage: loupe tap (--test-id <id> | --ref <ref> | --x <n> --y <n>) --udid <sim> [--host <url>] [--snapshot <snapshot.json>] [--trace-dir <path>] [--expect-visible <testID>]"
         case "swipe":
             return "Usage: loupe swipe --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--no-verify-scroll] [--trace-dir <path>]"
         case "drag":
@@ -1035,6 +1058,10 @@ struct LoupeCLI {
             return ConstraintMutationOptions.usage(deactivate: true)
         case "paint-stack":
             return "Usage: loupe paint-stack [snapshot.json] (--point x,y | --ref <ref>) [--host <url>] [--udid <sim>] [--bundle-id <id>] [--limit <n>] [--json]"
+        case "screenshot":
+            return "Usage: loupe screenshot --udid <sim> --output <path> [--timeout <seconds>]"
+        case "cleanup":
+            return "Usage: loupe cleanup [--dry-run] [--no-runtimes] [--no-traces] [--traces-older-than <duration>|--all-traces] [--timeout <seconds>]"
         case "current":
             return "Usage: loupe current [--json] [--timeout <seconds>]"
         case "version", "--version":
@@ -2640,6 +2667,9 @@ struct LoupeCLI {
         if let runtime = report.artifacts.runtime {
             lines.append("- runtime: \(runtime)")
         }
+        if let logs = report.artifacts.logs {
+            lines.append("- logs: \(logs)")
+        }
         lines += [
             "",
             "## Counts",
@@ -4069,8 +4099,8 @@ struct LoupeCLI {
     }
 
     private static func format(_ value: Double) -> String {
-        if value.rounded() == value {
-            return String(Int(value))
+        if value.isFinite, value.rounded() == value, let intValue = Int(exactly: value) {
+            return String(intValue)
         }
         return String(value)
     }

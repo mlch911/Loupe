@@ -23,6 +23,7 @@ struct CaptureReportArtifacts: Codable, Equatable {
     var compact: String
     var audit: String
     var runtime: String?
+    var logs: String?
     var summaryMarkdown: String
 }
 

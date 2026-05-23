@@ -2,15 +2,23 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-DEVICE="${LOUPE_DEVICE:-booted}"
 PORT="${LOUPE_PORT:-}"
 
 cd "$ROOT_DIR"
 
-if ! xcrun simctl list devices booted | grep -q Booted; then
+booted_udid() {
+  xcrun simctl list devices booted --json | ruby -rjson -e '
+    devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
+    booted = devices.find { |device| device["state"] == "Booted" }
+    puts booted && booted["udid"]
+  '
+}
+
+DEVICE="${LOUPE_DEVICE:-$(booted_udid)}"
+if [[ -z "$DEVICE" ]]; then
   FIRST_DEVICE="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
   xcrun simctl boot "$FIRST_DEVICE"
-  DEVICE="booted"
+  DEVICE="$FIRST_DEVICE"
 fi
 
 swift build
@@ -68,10 +76,24 @@ SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
 LOGS_PATH="/tmp/loupe-example-logs.json"
 INSPECT_PATH="/tmp/loupe-example-inspect.json"
 curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
-curl -sS "$HOST/logs" > "$LOGS_PATH"
+.build/debug/loupe logs --host "$HOST" --output "$LOGS_PATH" >/dev/null
 
 .build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id example.customerList > "$INSPECT_PATH"
-grep -q '"example_customers_visible"' "$LOGS_PATH"
-grep -q '"screen"' "$INSPECT_PATH"
-grep -q '"customers"' "$INSPECT_PATH"
+ruby -rjson -e '
+  logs = JSON.parse(File.read(ARGV.fetch(0)))
+  log = logs.find { |entry| entry["message"] == "example_customers_visible" }
+  abort "missing example_customers_visible log" unless log
+  screen = log.dig("metadata", "screen", "value")
+  abort "expected log screen=customers, got #{screen.inspect}" unless screen == "customers"
+  background_log = logs.find { |entry| entry["message"] == "example_customers_background_visible" }
+  abort "missing background example_customers_background_visible log" unless background_log
+  background_screen = background_log.dig("metadata", "screen", "value")
+  background_origin = background_log.dig("metadata", "origin", "value")
+  abort "expected background log screen=customers, got #{background_screen.inspect}" unless background_screen == "customers"
+  abort "expected background log origin=background, got #{background_origin.inspect}" unless background_origin == "background"
+  inspection = JSON.parse(File.read(ARGV.fetch(1)))
+  custom = inspection.fetch("node").fetch("custom")
+  abort "expected inspect screen=customers" unless custom.dig("screen", "value") == "customers"
+  abort "expected inspect fixture=true" unless custom.dig("fixture", "value") == true
+' "$LOGS_PATH" "$INSPECT_PATH"

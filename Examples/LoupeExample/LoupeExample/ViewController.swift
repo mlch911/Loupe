@@ -98,6 +98,20 @@ final class ViewController: UITableViewController {
                 "metadata": ["screen": "customers"]
             ]
         )
+        DispatchQueue.global(qos: .utility).async {
+            NotificationCenter.default.post(
+                name: Notification.Name("dev.loupe.log"),
+                object: nil,
+                userInfo: [
+                    "level": "info",
+                    "message": "example_customers_background_visible",
+                    "metadata": [
+                        "screen": "customers",
+                        "origin": "background"
+                    ]
+                ]
+            )
+        }
         NotificationCenter.default.post(
             name: Notification.Name("dev.loupe.viewMetadata"),
             object: tableView,
@@ -514,6 +528,7 @@ final class ComponentsViewController: UIViewController {
     private let designCard = UIView()
     private let componentTiles = ["Label", "Image", "Control", "Input", "List"]
     private let pickerRows = ["North", "South", "West"]
+    private var didSendLoupeComponentLog = false
 
     init(presentAlertAfterAppear: Bool = false) {
         self.presentAlertAfterAppear = presentAlertAfterAppear
@@ -552,11 +567,29 @@ final class ComponentsViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        sendLoupeComponentLogIfNeeded()
+
         guard presentAlertAfterAppear, !didPresentInitialAlert else {
             return
         }
         didPresentInitialAlert = true
         showAlert()
+    }
+
+    private func sendLoupeComponentLogIfNeeded() {
+        guard !didSendLoupeComponentLog else {
+            return
+        }
+        didSendLoupeComponentLog = true
+        NotificationCenter.default.post(
+            name: Notification.Name("dev.loupe.log"),
+            object: nil,
+            userInfo: [
+                "level": "info",
+                "message": "example_components_visible",
+                "metadata": ["screen": "components"]
+            ]
+        )
     }
 
     private func configureControls() {
