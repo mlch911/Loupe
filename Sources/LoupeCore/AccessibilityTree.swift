@@ -200,6 +200,11 @@ public struct LoupeAccessibilityTree: Codable, Equatable {
         if nonEmpty(node.label) != nil || nonEmpty(node.text) != nil || nonEmpty(node.value) != nil {
             return true
         }
+        if nonEmpty(accessibility?.label) != nil
+            || nonEmpty(accessibility?.value) != nil
+            || nonEmpty(accessibility?.hint) != nil {
+            return true
+        }
         return accessibility?.traits.isEmpty == false
     }
 

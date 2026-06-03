@@ -12,6 +12,7 @@ swift build --product loupe --product MacLoupeExample
 APP_LOG="/tmp/loupe-macos-example.log"
 SNAPSHOT_PATH="/tmp/loupe-macos-snapshot.json"
 DARK_SNAPSHOT_PATH="/tmp/loupe-macos-dark-snapshot.json"
+ACCESSIBILITY_PATH="/tmp/loupe-macos-accessibility.json"
 LOGS_PATH="/tmp/loupe-macos-logs.json"
 NETWORK_PATH="/tmp/loupe-macos-network.json"
 REFS_PATH="/tmp/loupe-macos-refs.json"
@@ -26,7 +27,7 @@ INSPECT_PATH="/tmp/loupe-macos-inspect.json"
 INSPECT_TITLE_PATH="/tmp/loupe-macos-inspect-title.json"
 QUERY_PATH="/tmp/loupe-macos-query.json"
 
-rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_PATH" "$INSPECT_TITLE_PATH" "$QUERY_PATH"
+rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_PATH" "$INSPECT_TITLE_PATH" "$QUERY_PATH"
 
 LOUPE_PORT="$PORT" .build/debug/MacLoupeExample >"$APP_LOG" 2>&1 &
 APP_PID=$!
@@ -65,6 +66,7 @@ done
 .build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id mac.example.list > "$QUERY_PATH"
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id mac.example.root > "$INSPECT_PATH"
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id mac.example.title > "$INSPECT_TITLE_PATH"
+.build/debug/loupe observe fetch "$HOST/accessibility" --timeout 10 --output "$ACCESSIBILITY_PATH" >/dev/null
 .build/debug/loupe debug console --host "$HOST" --output "$LOGS_PATH" >/dev/null
 .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
 .build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
@@ -129,6 +131,24 @@ ruby -rjson -e '
   image = by_test_id.fetch("mac.example.image")
   abort "expected AppKit image role" unless image["role"] == "image"
   abort "expected AppKit image size" unless image.dig("uiKit", "imageView", "imageSize", "width") == 24 && image.dig("uiKit", "imageView", "imageSize", "height") == 24
+  abort "native AX child should not be present in view snapshot" if by_test_id["mac.example.nativeAX.action"]
+
+  accessibility = JSON.parse(File.read(ARGV.fetch(14)))
+  ax_nodes = accessibility.fetch("nodes")
+  native_ax = ax_nodes.values.find { |node| node["testID"] == "mac.example.nativeAX.action" }
+  host = by_test_id.fetch("mac.example.nativeAX.host")
+  abort "missing native AppKit accessibility element" unless native_ax
+  abort "expected native AppKit accessibility ref" unless native_ax["ref"].start_with?("ax-native-#{host.fetch("ref")}-")
+  abort "expected native AX sourceRef to host view" unless native_ax["sourceRef"] == host.fetch("ref")
+  abort "expected native AX parentRef to host accessibility node" unless native_ax["parentRef"] == "ax-#{host.fetch("ref")}"
+  abort "expected native AX button role" unless native_ax["role"] == "button"
+  abort "expected native AX label" unless native_ax["label"] == "Native AX Action"
+  abort "expected native AX value" unless native_ax["value"] == "available"
+  abort "expected native AX hint" unless native_ax["hint"] == "Runs the native accessibility fixture"
+  abort "expected native AX test id" unless native_ax["testID"] == "mac.example.nativeAX.action"
+  abort "expected native AX interactive" unless native_ax["isInteractive"] == true
+  abort "expected native AX frame" unless native_ax["frame"]
+  abort "expected native AX activation point" unless native_ax["activationPoint"]
 
   logs = JSON.parse(File.read(ARGV.fetch(3)))
   abort "missing mac_example_visible log" unless logs.any? { |entry| entry["message"] == "mac_example_visible" }
@@ -166,7 +186,7 @@ ruby -rjson -e '
   target_ids = ["mac.example.title", "mac.example.status", "mac.example.refresh"]
   bad_contrast = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && target_ids.include?(issue["testID"]) }
   abort "unexpected macOS dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
-' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$INSPECT_TITLE_PATH"
+' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$INSPECT_TITLE_PATH" "$ACCESSIBILITY_PATH"
 
 echo "macOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

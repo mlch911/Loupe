@@ -115,6 +115,7 @@ import AppKit
         let stepperNode = try #require(snapshot.nodes.values.first { $0.testID == fixture.stepperTestID })
         let progressNode = try #require(snapshot.nodes.values.first { $0.testID == fixture.progressTestID })
         let imageNode = try #require(snapshot.nodes.values.first { $0.testID == fixture.imageTestID })
+        let nativeAXHostNode = try #require(snapshot.nodes.values.first { $0.testID == fixture.nativeAXHostTestID })
 
         #expect(appNode.kind == .application)
         #expect(appNode.typeName == "NSApplication")
@@ -139,6 +140,24 @@ import AppKit
         #expect(progressNode.uiKit?.progressView?.value == 0.75)
         #expect(imageNode.role == "image")
         #expect(imageNode.uiKit?.imageView?.imageSize == LoupeSize(width: 18, height: 18))
+        #expect(snapshot.nodes.values.first { $0.testID == fixture.nativeAXActionTestID } == nil)
+
+        let accessibilityTree = agent.captureAccessibilityTree()
+        let nativeAXMatch = try #require(
+            LoupeAccessibilityTreeQuery.first(.testID(fixture.nativeAXActionTestID), in: accessibilityTree)
+        )
+        let nativeAXNode = try #require(accessibilityTree.nodes[nativeAXMatch.ref])
+        #expect(nativeAXNode.ref.hasPrefix("ax-native-\(nativeAXHostNode.ref)-"))
+        #expect(nativeAXNode.sourceRef == nativeAXHostNode.ref)
+        #expect(nativeAXNode.parentRef == "ax-\(nativeAXHostNode.ref)")
+        #expect(nativeAXNode.role == "button")
+        #expect(nativeAXNode.label == "Native AX Action")
+        #expect(nativeAXNode.value == "available")
+        #expect(nativeAXNode.hint == "Runs the native accessibility fixture")
+        #expect(nativeAXNode.testID == fixture.nativeAXActionTestID)
+        #expect(nativeAXNode.activationPoint == nativeAXNode.frame?.center)
+        #expect(nativeAXMatch.text == "Native AX Action")
+        #expect(nativeAXMatch.isInteractive == true)
 
         let buttonFrame = try #require(buttonNode.frame)
         let hitTest = agent.hitTest(point: buttonFrame.center)
@@ -186,8 +205,11 @@ private final class AppKitFixture {
     let stepperTestID = "platform.stepper"
     let progressTestID = "platform.progress"
     let imageTestID = "platform.image"
+    let nativeAXHostTestID = "platform.nativeAX.host"
+    let nativeAXActionTestID = "platform.nativeAX.action"
 
     private let window: NSWindow
+    private let nativeAXHost: NativeAccessibilityHostView
 
     init() {
         _ = NSApplication.shared
@@ -242,21 +264,70 @@ private final class AppKitFixture {
         imageView.image = image
         imageView.testID(imageTestID)
 
+        nativeAXHost = NativeAccessibilityHostView(
+            frame: NSRect(x: 80, y: 150, width: 180, height: 36),
+            actionTestID: nativeAXActionTestID
+        )
+        nativeAXHost.testID(nativeAXHostTestID)
+
         contentView.addSubview(button)
         contentView.addSubview(segmented)
         contentView.addSubview(slider)
         contentView.addSubview(stepper)
         contentView.addSubview(progress)
         contentView.addSubview(imageView)
+        contentView.addSubview(nativeAXHost)
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         contentView.layoutSubtreeIfNeeded()
+        nativeAXHost.updateAccessibilityFrame()
     }
 
     func tearDown() {
         window.orderOut(nil)
         window.close()
+    }
+}
+
+private final class NativeAccessibilityHostView: NSView {
+    private let actionElement = NSAccessibilityElement()
+
+    init(frame: NSRect, actionTestID: String) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        actionElement.setAccessibilityIdentifier(actionTestID)
+        actionElement.setAccessibilityLabel("Native AX Action")
+        actionElement.setAccessibilityValue("available")
+        actionElement.setAccessibilityHelp("Runs the native accessibility fixture")
+        actionElement.setAccessibilityRole(.button)
+        actionElement.setAccessibilityElement(true)
+        actionElement.setAccessibilityEnabled(true)
+        actionElement.setAccessibilityParent(self)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func isAccessibilityElement() -> Bool {
+        false
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        [actionElement]
+    }
+
+    func updateAccessibilityFrame() {
+        guard let window else {
+            return
+        }
+        let localFrame = NSRect(x: 12, y: 8, width: 156, height: 24)
+        let frameInWindow = convert(localFrame, to: nil)
+        let frameInScreen = window.convertToScreen(frameInWindow)
+        actionElement.setAccessibilityFrame(frameInScreen)
+        actionElement.setAccessibilityActivationPoint(NSPoint(x: frameInScreen.midX, y: frameInScreen.midY))
     }
 }
 #endif

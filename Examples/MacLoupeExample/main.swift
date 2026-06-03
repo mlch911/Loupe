@@ -85,6 +85,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(statusLabel)
         stack.addArrangedSubview(button)
         stack.addArrangedSubview(makeDiagnosticControls())
+        stack.addArrangedSubview(makeNativeAccessibilityFixture())
         stack.addArrangedSubview(list)
 
         NSLayoutConstraint.activate([
@@ -166,6 +167,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         return row
     }
 
+    private func makeNativeAccessibilityFixture() -> NSView {
+        let host = NativeAccessibilityHostView(actionTestID: "mac.example.nativeAX.action")
+        host.testID("mac.example.nativeAX.host")
+        host.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        host.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        return host
+    }
+
     private func publishRuntimeFixtures() {
         UserDefaults.standard.set(false, forKey: "mac-new-nav")
 
@@ -213,5 +222,51 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             item[kSecValueData as String] = Data("fixture-token".utf8)
             SecItemAdd(item as CFDictionary, nil)
         }
+    }
+}
+
+private final class NativeAccessibilityHostView: NSView {
+    private let actionElement = NSAccessibilityElement()
+
+    init(actionTestID: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        actionElement.setAccessibilityIdentifier(actionTestID)
+        actionElement.setAccessibilityLabel("Native AX Action")
+        actionElement.setAccessibilityValue("available")
+        actionElement.setAccessibilityHelp("Runs the native accessibility fixture")
+        actionElement.setAccessibilityRole(.button)
+        actionElement.setAccessibilityElement(true)
+        actionElement.setAccessibilityEnabled(true)
+        actionElement.setAccessibilityParent(self)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func isAccessibilityElement() -> Bool {
+        false
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        [actionElement]
+    }
+
+    override func layout() {
+        super.layout()
+        updateAccessibilityFrame()
+    }
+
+    private func updateAccessibilityFrame() {
+        guard let window else {
+            return
+        }
+        let localFrame = NSRect(x: 12, y: 6, width: max(bounds.width - 24, 1), height: max(bounds.height - 12, 1))
+        let frameInWindow = convert(localFrame, to: nil)
+        let frameInScreen = window.convertToScreen(frameInWindow)
+        actionElement.setAccessibilityFrame(frameInScreen)
+        actionElement.setAccessibilityActivationPoint(NSPoint(x: frameInScreen.midX, y: frameInScreen.midY))
     }
 }

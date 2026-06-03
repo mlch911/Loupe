@@ -48,6 +48,7 @@ public extension NSView {
 @MainActor
 public final class LoupeAgent {
     private var nextRef = 0
+    private var nextNativeAccessibilityRef = 0
 
     public init() {}
 
@@ -56,7 +57,8 @@ public final class LoupeAgent {
     }
 
     public func captureAccessibilityTree() -> LoupeAccessibilityTree {
-        LoupeAccessibilityTree.build(from: captureSnapshot())
+        let capture = captureSnapshotWithViewRefs()
+        return captureNativeAccessibilityTree(snapshot: capture.snapshot, viewRefs: capture.viewRefs)
     }
 
     public func captureCompactObservation(
@@ -314,6 +316,204 @@ public final class LoupeAgent {
         )
     }
 
+    private func captureNativeAccessibilityTree(
+        snapshot: LoupeSnapshot,
+        viewRefs: [ObjectIdentifier: String]
+    ) -> LoupeAccessibilityTree {
+        nextNativeAccessibilityRef = 0
+
+        var tree = LoupeAccessibilityTree.build(from: snapshot)
+        var signatures = Set(tree.nodes.values.map(nativeAccessibilitySignature(for:)))
+
+        for window in NSApp.windows {
+            guard let contentView = window.contentView else { continue }
+            appendNativeAccessibilityElements(
+                in: contentView,
+                snapshot: snapshot,
+                viewRefs: viewRefs,
+                tree: &tree,
+                signatures: &signatures
+            )
+        }
+
+        return tree
+    }
+
+    private func appendNativeAccessibilityElements(
+        in view: NSView,
+        snapshot: LoupeSnapshot,
+        viewRefs: [ObjectIdentifier: String],
+        tree: inout LoupeAccessibilityTree,
+        signatures: inout Set<String>
+    ) {
+        guard let sourceRef = viewRefs[ObjectIdentifier(view)] else {
+            view.subviews.forEach {
+                appendNativeAccessibilityElements(
+                    in: $0,
+                    snapshot: snapshot,
+                    viewRefs: viewRefs,
+                    tree: &tree,
+                    signatures: &signatures
+                )
+            }
+            return
+        }
+
+        var visitedContainers = Set<ObjectIdentifier>()
+        for element in nativeAccessibilityElements(in: view, visitedContainers: &visitedContainers) {
+            if element is NSView {
+                continue
+            }
+
+            guard let accessibilityElement = element as? NSAccessibilityElement else {
+                continue
+            }
+            let ownerRef = nativeAccessibilitySourceRef(
+                for: accessibilityElement,
+                fallback: sourceRef,
+                viewRefs: viewRefs
+            )
+            guard let node = nativeAccessibilityNode(
+                for: accessibilityElement,
+                sourceRef: ownerRef,
+                snapshot: snapshot,
+                tree: tree
+            ) else {
+                continue
+            }
+
+            let signature = nativeAccessibilitySignature(for: node)
+            guard !signatures.contains(signature) else {
+                continue
+            }
+
+            signatures.insert(signature)
+            tree.nodes[node.ref] = node
+            if let parentRef = node.parentRef, var parent = tree.nodes[parentRef] {
+                parent.children.append(node.ref)
+                parent.children.sort { lhs, rhs in
+                    accessibilityVisualOrder(tree.nodes[lhs], tree.nodes[rhs])
+                }
+                tree.nodes[parentRef] = parent
+            } else {
+                tree.rootRefs.append(node.ref)
+                tree.rootRefs.sort { lhs, rhs in
+                    accessibilityVisualOrder(tree.nodes[lhs], tree.nodes[rhs])
+                }
+            }
+        }
+
+        view.subviews.forEach {
+            appendNativeAccessibilityElements(
+                in: $0,
+                snapshot: snapshot,
+                viewRefs: viewRefs,
+                tree: &tree,
+                signatures: &signatures
+            )
+        }
+    }
+
+    private func nativeAccessibilityNode(
+        for element: NSAccessibilityElement,
+        sourceRef: String,
+        snapshot: LoupeSnapshot,
+        tree: LoupeAccessibilityTree
+    ) -> LoupeAccessibilityNode? {
+        let testID = nonEmpty(element.accessibilityIdentifier())
+        let label = nonEmpty(element.accessibilityLabel())
+        let value = accessibilityValueString(for: element)
+        let hint = nonEmpty(element.accessibilityHelp())
+        let role = accessibilityRoleName(for: element)
+        let traits = role.map { [$0] } ?? []
+        let frame = loupeRect(fromScreenRect: element.accessibilityFrame())
+        let activationPoint = validActivationPoint(
+            loupePoint(fromScreenPoint: element.accessibilityActivationPoint()),
+            frame: frame
+        )
+
+        guard testID != nil || label != nil || value != nil || hint != nil || !traits.isEmpty else {
+            return nil
+        }
+
+        let isVisible = !frame.isEmpty && intersectsScreen(frame, screen: snapshot.screen.size)
+
+        return LoupeAccessibilityNode(
+            ref: makeNativeAccessibilityRef(sourceRef: sourceRef),
+            sourceRef: sourceRef,
+            parentRef: treeParentRef(for: sourceRef, tree: tree),
+            role: role,
+            label: label,
+            value: value,
+            hint: hint,
+            testID: testID,
+            traits: traits,
+            frame: frame,
+            activationPoint: activationPoint,
+            isVisible: isVisible,
+            isEnabled: element.isAccessibilityEnabled(),
+            isInteractive: isInteractiveAccessibilityRole(role),
+            children: []
+        )
+    }
+
+    private func nativeAccessibilitySourceRef(
+        for element: NSAccessibilityElement,
+        fallback: String,
+        viewRefs: [ObjectIdentifier: String]
+    ) -> String {
+        guard let parent = element.accessibilityParent() as? NSView else {
+            return fallback
+        }
+        return viewRefs[ObjectIdentifier(parent)] ?? fallback
+    }
+
+    private func nativeAccessibilityElements(
+        in container: NSObject,
+        visitedContainers: inout Set<ObjectIdentifier>,
+        depth: Int = 0
+    ) -> [NSObject] {
+        guard depth < 8 else {
+            return []
+        }
+
+        let containerID = ObjectIdentifier(container)
+        guard !visitedContainers.contains(containerID) else {
+            return []
+        }
+        visitedContainers.insert(containerID)
+
+        let directElements: [Any]
+        if let view = container as? NSView {
+            directElements = view.accessibilityChildren() ?? []
+        } else if let element = container as? NSAccessibilityElement {
+            directElements = element.accessibilityChildren() ?? []
+        } else {
+            directElements = []
+        }
+
+        guard !directElements.isEmpty else {
+            return []
+        }
+
+        var elements: [NSObject] = []
+        for element in directElements.compactMap({ $0 as? NSObject }) {
+            elements.append(element)
+            if element is NSView {
+                continue
+            }
+            elements.append(
+                contentsOf: nativeAccessibilityElements(
+                    in: element,
+                    visitedContainers: &visitedContainers,
+                    depth: depth + 1
+                )
+            )
+        }
+
+        return elements
+    }
+
     private func captureWindow(
         _ window: NSWindow,
         parentRef: String,
@@ -393,6 +593,11 @@ public final class LoupeAgent {
     private func makeRef() -> String {
         nextRef += 1
         return "n\(nextRef)"
+    }
+
+    private func makeNativeAccessibilityRef(sourceRef: String) -> String {
+        nextNativeAccessibilityRef += 1
+        return "ax-native-\(sourceRef)-\(nextNativeAccessibilityRef)"
     }
 }
 
@@ -1446,6 +1651,14 @@ private func loupeRect(fromScreenRect rect: NSRect) -> LoupeRect {
     )
 }
 
+private func loupePoint(fromScreenPoint point: NSPoint) -> LoupePoint {
+    let screenHeight = NSScreen.main?.frame.maxY ?? point.y
+    return LoupePoint(
+        x: finiteDouble(Double(point.x)) ?? 0,
+        y: finiteDouble(Double(screenHeight - point.y)) ?? 0
+    )
+}
+
 private func appKitScreenPoint(from point: LoupePoint) -> NSPoint {
     let screenHeight = NSScreen.main?.frame.maxY ?? CGFloat(point.y)
     return NSPoint(x: point.x, y: Double(screenHeight) - point.y)
@@ -1455,14 +1668,16 @@ private func appKitScreenPoint(from point: LoupePoint) -> NSPoint {
 private func accessibility(for view: NSView) -> LoupeAccessibility? {
     let identifier = nonEmpty(view.identifier?.rawValue)
     let label = nonEmpty(text(for: view)) ?? nonEmpty(view.accessibilityLabel())
-    guard identifier != nil || label != nil || isInteractive(view) else {
+    let value = accessibilityValueString(for: view)
+    let hint = accessibilityHint(for: view)
+    guard identifier != nil || label != nil || value != nil || hint != nil || isInteractive(view) else {
         return nil
     }
     return LoupeAccessibility(
         identifier: identifier,
         label: label,
-        value: accessibilityValueString(for: view),
-        hint: accessibilityHint(for: view),
+        value: value,
+        hint: hint,
         traits: role(for: view).map { [$0] } ?? [],
         frame: view.window.flatMap { frameInScreen(for: view, window: $0) },
         activationPoint: view.window.flatMap { frameInScreen(for: view, window: $0) }?.center,
@@ -1577,6 +1792,107 @@ private func finiteDouble(_ value: CGFloat) -> Double? {
 
 private func finiteDouble(_ value: Double) -> Double? {
     value.isFinite ? value : nil
+}
+
+private func accessibilityValueString(for element: NSAccessibilityElement) -> String? {
+    guard let value = element.accessibilityValue() else {
+        return nil
+    }
+    if let string = value as? String {
+        return nonEmpty(string)
+    }
+    return nonEmpty(String(describing: value))
+}
+
+private func accessibilityRoleName(for element: NSAccessibilityElement) -> String? {
+    guard let role = element.accessibilityRole() else {
+        return nil
+    }
+    switch role {
+    case .button:
+        return "button"
+    case .link:
+        return "link"
+    case .image:
+        return "image"
+    case .staticText:
+        return "staticText"
+    case .textField:
+        return "textField"
+    case .checkBox:
+        return "checkBox"
+    case .radioButton:
+        return "radioButton"
+    case .slider:
+        return "slider"
+    case .popUpButton:
+        return "popUpButton"
+    default:
+        return role.rawValue
+            .replacingOccurrences(of: "AX", with: "")
+            .nilIfEmpty
+    }
+}
+
+private func isInteractiveAccessibilityRole(_ role: String?) -> Bool {
+    switch role {
+    case "button", "link", "textField", "checkBox", "radioButton", "slider", "popUpButton":
+        return true
+    default:
+        return false
+    }
+}
+
+private func treeParentRef(for sourceRef: String, tree: LoupeAccessibilityTree) -> String? {
+    let parentRef = "ax-\(sourceRef)"
+    if tree.nodes[parentRef] != nil {
+        return parentRef
+    }
+    return nil
+}
+
+private func validActivationPoint(_ point: LoupePoint?, frame: LoupeRect?) -> LoupePoint? {
+    guard let point, let frame, !frame.isEmpty else {
+        return nil
+    }
+
+    guard point.x >= frame.x, point.x <= frame.maxX, point.y >= frame.y, point.y <= frame.maxY else {
+        return nil
+    }
+
+    return point
+}
+
+private func intersectsScreen(_ frame: LoupeRect, screen: LoupeSize) -> Bool {
+    frame.maxX > 0 && frame.maxY > 0 && frame.x < screen.width && frame.y < screen.height
+}
+
+private func nativeAccessibilitySignature(for node: LoupeAccessibilityNode) -> String {
+    let frame = node.frame.map {
+        "\(Int($0.x.rounded())):\(Int($0.y.rounded())):\(Int($0.width.rounded())):\(Int($0.height.rounded()))"
+    } ?? "nil"
+    return [
+        node.testID ?? "",
+        node.label ?? "",
+        node.value ?? "",
+        node.hint ?? "",
+        node.role ?? "",
+        frame
+    ].joined(separator: "|")
+}
+
+private func accessibilityVisualOrder(
+    _ lhs: LoupeAccessibilityNode?,
+    _ rhs: LoupeAccessibilityNode?
+) -> Bool {
+    guard let lhsFrame = lhs?.frame else { return false }
+    guard let rhsFrame = rhs?.frame else { return true }
+
+    if abs(lhsFrame.y - rhsFrame.y) > 1 {
+        return lhsFrame.y < rhsFrame.y
+    }
+
+    return lhsFrame.x < rhsFrame.x
 }
 
 private func metadataValue(fromDefault value: Any?) -> LoupeMetadataValue? {
