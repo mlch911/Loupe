@@ -93,8 +93,10 @@ done
 
 SNAPSHOT_PATH="/tmp/loupe-tvos-snapshot.json"
 DARK_SNAPSHOT_PATH="/tmp/loupe-tvos-dark-snapshot.json"
+FOCUS_SNAPSHOT_PATH="/tmp/loupe-tvos-focus-snapshot.json"
 RUNTIME_PATH="/tmp/loupe-tvos-runtime.json"
 LOGS_PATH="/tmp/loupe-tvos-logs.json"
+PRESS_LOGS_PATH="/tmp/loupe-tvos-press-logs.json"
 NETWORK_PATH="/tmp/loupe-tvos-network.json"
 REFS_PATH="/tmp/loupe-tvos-refs.json"
 FLAG_PATH="/tmp/loupe-tvos-flag.json"
@@ -107,7 +109,10 @@ AUDIT_PATH="/tmp/loupe-tvos-audit.json"
 INSPECT_ROOT_PATH="/tmp/loupe-tvos-inspect-root.json"
 INSPECT_LIST_PATH="/tmp/loupe-tvos-inspect-list.json"
 QUERY_PATH="/tmp/loupe-tvos-query.json"
-rm -f "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$QUERY_PATH"
+PRESS_SELECT_TRACE_DIR="/tmp/loupe-tvos-press-select-trace"
+PRESS_DOWN_TRACE_DIR="/tmp/loupe-tvos-press-down-trace"
+rm -f "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$FOCUS_SNAPSHOT_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$PRESS_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$QUERY_PATH"
+rm -rf "$PRESS_SELECT_TRACE_DIR" "$PRESS_DOWN_TRACE_DIR"
 
 curl -fsS "$HOST/health" | grep -q LoupeKit
 .build/debug/loupe runtime info --host "$HOST" --udid "$DEVICE" > "$RUNTIME_PATH"
@@ -142,6 +147,12 @@ BUTTON_POINT="$(ruby -rjson -e '
 ' "$SNAPSHOT_PATH")"
 .build/debug/loupe ui hit-test --host "$HOST" --point "$BUTTON_POINT" --output "$HIT_TEST_PATH" >/dev/null
 .build/debug/loupe ui responder-chain --host "$HOST" --test-id tv.example.refresh --output "$RESPONDER_PATH" >/dev/null
+.build/debug/loupe press select --host "$HOST" --udid "$DEVICE" --trace-dir "$PRESS_SELECT_TRACE_DIR" --expect-visible tv.example.status
+.build/debug/loupe wait-for-value --host "$HOST" --test-id tv.example.status --key text --equals "Snapshot refreshed" --timeout 5 >/tmp/loupe-tvos-wait-refresh.json
+.build/debug/loupe debug console --host "$HOST" --output "$PRESS_LOGS_PATH" >/dev/null
+.build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH" >/dev/null
+.build/debug/loupe press down --host "$HOST" --udid "$DEVICE" --trace-dir "$PRESS_DOWN_TRACE_DIR" --expect-visible tv.example.secondary
+.build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$FOCUS_SNAPSHOT_PATH" >/dev/null
 .build/debug/loupe env appearance dark --host "$HOST" --output "$ENV_PATH" >/dev/null
 .build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$DARK_SNAPSHOT_PATH" >/dev/null
 .build/debug/loupe ui audit "$DARK_SNAPSHOT_PATH" --kind lowTextContrast > "$AUDIT_PATH"
@@ -154,6 +165,7 @@ ruby -rjson -e '
   abort "expected simulator UDID" unless identity["simulatorUDID"] == ARGV.fetch(10)
 
   snapshot = JSON.parse(File.read(ARGV.fetch(1)))
+  focus_snapshot = JSON.parse(File.read(ARGV.fetch(16)))
   size = snapshot.fetch("screen").fetch("size")
   abort "expected nonzero tvOS screen" unless size.fetch("width") > 0 && size.fetch("height") > 0
   abort "missing tv.example.collection" unless snapshot.fetch("nodes").values.any? { |node| node["testID"] == "tv.example.collection" }
@@ -183,6 +195,9 @@ ruby -rjson -e '
   abort "expected tv.example.refresh accessibility label" unless refresh.dig("accessibility", "label") == "Refresh snapshot"
   abort "expected tv.example.refresh accessibility element" unless refresh.dig("accessibility", "isElement") == true
 
+  status = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.status" }
+  abort "expected press select to refresh status" unless status && status["text"] == "Snapshot refreshed"
+
   secondary = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.secondary" }
   abort "missing tv.example.secondary focusable node" unless secondary
   abort "expected tv.example.secondary focus eligibility" unless secondary.dig("uiKit", "canBecomeFocused") == true
@@ -193,6 +208,28 @@ ruby -rjson -e '
 
   logs = JSON.parse(File.read(ARGV.fetch(5)))
   abort "missing tv_example_visible log" unless logs.any? { |entry| entry["message"] == "tv_example_visible" }
+
+  press_logs = JSON.parse(File.read(ARGV.fetch(17)))
+  abort "missing tv_example_refresh_triggered log after press select" unless press_logs.any? { |entry| entry["message"] == "tv_example_refresh_triggered" }
+
+  select_trace = ARGV.fetch(18)
+  down_trace = ARGV.fetch(19)
+  ["action-before.json", "action-target.json", "action-after.json", "before-snapshot.json", "after-snapshot.json"].each do |name|
+    abort "missing select press trace #{name}" unless File.exist?(File.join(select_trace, name))
+    abort "missing down press trace #{name}" unless File.exist?(File.join(down_trace, name))
+  end
+  select_action = JSON.parse(File.read(File.join(select_trace, "action-target.json")))
+  abort "expected select press trace command" unless select_action["command"] == "press"
+  abort "expected select press trace button" unless select_action["press"] == "select"
+  abort "expected select remotePress source" unless select_action["resolvedSource"] == "remotePress:select"
+
+  down_action = JSON.parse(File.read(File.join(down_trace, "action-target.json")))
+  abort "expected down press trace command" unless down_action["command"] == "press"
+  abort "expected down press trace button" unless down_action["press"] == "down"
+  abort "expected down remotePress source" unless down_action["resolvedSource"] == "remotePress:down"
+
+  focused_after_down = focus_snapshot.fetch("nodes").values.select { |node| node.dig("uiKit", "isFocused") == true }
+  abort "expected tv.example.secondary focused after press down, got #{focused_after_down.map { |node| node["testID"] || node["typeName"] }.inspect}" unless focused_after_down.any? { |node| node["testID"] == "tv.example.secondary" }
 
   network = JSON.parse(File.read(ARGV.fetch(6)))
   event = network.find { |entry| entry["url"] == "https://api.example.test/tvos/workbench" }
@@ -228,7 +265,7 @@ ruby -rjson -e '
   target_ids = ["tv.example.title", "tv.example.status", "tv.example.refresh"]
   bad_contrast = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && target_ids.include?(issue["testID"]) }
   abort "unexpected tvOS dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
-' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH"
+' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$FOCUS_SNAPSHOT_PATH" "$PRESS_LOGS_PATH" "$PRESS_SELECT_TRACE_DIR" "$PRESS_DOWN_TRACE_DIR"
 
 echo "tvOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

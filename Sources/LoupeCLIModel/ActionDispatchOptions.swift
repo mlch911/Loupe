@@ -8,6 +8,7 @@ package protocol ActionDispatchOptions {
     var endPoint: LoupePoint? { get }
     var duration: Double? { get }
     var text: String? { get }
+    var press: String? { get }
     var startSpread: Double? { get }
     var endSpread: Double? { get }
     var traceDirectory: URL? { get }

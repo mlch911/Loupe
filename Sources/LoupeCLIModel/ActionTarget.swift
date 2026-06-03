@@ -5,6 +5,7 @@ package enum ActionTargetSource: CustomStringConvertible {
     case view(ref: String)
     case coordinates
     case keyboardFocus
+    case remotePress(button: String)
 
     package var description: String {
         switch self {
@@ -16,6 +17,8 @@ package enum ActionTargetSource: CustomStringConvertible {
             return "coordinates"
         case .keyboardFocus:
             return "keyboardFocus"
+        case let .remotePress(button):
+            return "remotePress:\(button)"
         }
     }
 }

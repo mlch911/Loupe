@@ -129,7 +129,7 @@ extension LoupeCLI {
         }
         let rest = Array(arguments.dropFirst())
         switch subcommand {
-        case "tap", "swipe", "drag", "pinch", "type":
+        case "tap", "swipe", "drag", "pinch", "type", "press":
             try await action(command: subcommand, arguments: rest)
         case "wait":
             try await wait(rest)

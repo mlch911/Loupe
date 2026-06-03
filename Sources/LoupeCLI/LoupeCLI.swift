@@ -131,7 +131,7 @@ struct LoupeCLI {
             try await tree(arguments + ["--text"])
         case "trace-summary":
             try traceSummary(arguments)
-        case "tap", "swipe", "drag", "pinch", "type":
+        case "tap", "swipe", "drag", "pinch", "type", "press":
             try await action(command: command, arguments: arguments)
         case "version", "--version":
             printVersion()
@@ -1056,6 +1056,7 @@ struct LoupeCLI {
       swipe                   Dispatch a one-finger swipe.
       drag                    Dispatch a one-finger drag.
       type                    Type text into the focused field.
+      press                   Press a simulator remote or keyboard button.
       wait                    Wait for visible, gone, or value state.
     """
 
@@ -1160,6 +1161,8 @@ struct LoupeCLI {
             return "Usage: loupe act drag --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>]"
         case "act type":
             return "Usage: loupe act type <text> --udid <sim> [--host <url>] [--trace-dir <path>]"
+        case "act press":
+            return "Usage: loupe act press up|down|left|right|select|menu|playPause --udid <sim> [--host <url>] [--trace-dir <path>] [--expect-visible <testID>]"
         case "act wait":
             return "Usage: loupe act wait visible|gone|value <selector> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--timeout <seconds>]"
         case "ui audit":
@@ -1241,6 +1244,8 @@ struct LoupeCLI {
             return "Usage: loupe drag --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>]"
         case "type":
             return "Usage: loupe type <text> --udid <sim> [--host <url>] [--trace-dir <path>]"
+        case "press":
+            return "Usage: loupe press up|down|left|right|select|menu|playPause --udid <sim> [--host <url>] [--trace-dir <path>] [--expect-visible <testID>]"
         case "wait-for-visible":
             return "Usage: loupe wait-for-visible (--test-id <id> | --ref <ref> | --text <text> | --role <role>) [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>] [--timeout <seconds>]"
         case "wait-for-gone":
@@ -2166,6 +2171,15 @@ struct LoupeCLI {
                     source: .keyboardFocus
                 )
             }
+            if options.command == "press" {
+                let screen = try await resolveActionScreen(options)
+                return ActionTarget(
+                    point: LoupePoint(x: 0, y: 0),
+                    screen: screen.size,
+                    screenScale: screen.scale,
+                    source: .remotePress(button: options.press ?? "unknown")
+                )
+            }
             throw CLIError("\(options.command) requires a selector or coordinates")
         }
 
@@ -2780,6 +2794,7 @@ struct LoupeCLI {
             endPoint: options.endPoint,
             duration: options.duration,
             text: options.text,
+            press: options.press,
             resolvedPoint: target?.point,
             resolvedScreen: target?.screen,
             resolvedSource: target?.source.description,
@@ -2990,6 +3005,8 @@ struct LoupeCLI {
             )
         case "type":
             status = LoupeHIDType(udid, options.text ?? "", &errorMessage)
+        case "press":
+            status = LoupeHIDPress(udid, options.press ?? "", &errorMessage)
         case "pinch":
             throw CLIError("pinch is not supported by the native HID backend yet")
         default:

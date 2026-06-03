@@ -15,6 +15,7 @@ package struct ActionOptions: ActionDispatchOptions {
     package var screen: LoupeSize
     package var duration: Double?
     package var text: String?
+    package var press: String?
     package var startSpread: Double?
     package var endSpread: Double?
     package var traceDirectory: URL?
@@ -36,6 +37,7 @@ package struct ActionOptions: ActionDispatchOptions {
         var endPoint: LoupePoint?
         var duration: Double?
         var text: String?
+        var press: String?
         var startSpread: Double?
         var endSpread: Double?
         var traceDirectory: URL?
@@ -49,6 +51,10 @@ package struct ActionOptions: ActionDispatchOptions {
 
         if command == "type", let first = arguments.first, !first.hasPrefix("--") {
             text = first
+            index = 1
+        }
+        if command == "press", let first = arguments.first, !first.hasPrefix("--") {
+            press = try Self.pressButton(first)
             index = 1
         }
 
@@ -72,6 +78,8 @@ package struct ActionOptions: ActionDispatchOptions {
                 let value = try Self.value(after: argument, in: arguments, index: &index)
                 if command == "type" {
                     text = value
+                } else if command == "press" {
+                    throw CLIError("press expects a button: up|down|left|right|select|menu|playPause")
                 } else if command == "tap" {
                     throw CLIError("tap expects --test-id, --ref, or coordinates")
                 } else {
@@ -79,6 +87,9 @@ package struct ActionOptions: ActionDispatchOptions {
                 }
             case "--exact-text":
                 _ = try Self.value(after: argument, in: arguments, index: &index)
+                if command == "press" {
+                    throw CLIError("press expects a button: up|down|left|right|select|menu|playPause")
+                }
                 if command == "tap" {
                     throw CLIError("tap expects --test-id, --ref, or coordinates")
                 }
@@ -128,6 +139,9 @@ package struct ActionOptions: ActionDispatchOptions {
         if command == "type", text == nil {
             throw CLIError("type requires text")
         }
+        if command == "press", press == nil {
+            throw CLIError("press requires a button: up|down|left|right|select|menu|playPause")
+        }
         guard timeout > 0 else {
             throw CLIError("--timeout must be greater than 0")
         }
@@ -144,6 +158,11 @@ package struct ActionOptions: ActionDispatchOptions {
                 throw CLIError("tap requires --test-id, --ref, or --x <n> --y <n>")
             }
         }
+        if command == "press" {
+            if selector != nil || point != nil || endPoint != nil || snapshotURL != nil {
+                throw CLIError("press does not accept selectors, coordinates, or snapshots")
+            }
+        }
 
         self.selector = selector
         self.snapshotURL = snapshotURL
@@ -151,6 +170,7 @@ package struct ActionOptions: ActionDispatchOptions {
         self.endPoint = endPoint
         self.duration = duration
         self.text = text
+        self.press = press
         self.startSpread = startSpread
         self.endSpread = endSpread
         self.traceDirectory = traceDirectory
@@ -190,5 +210,30 @@ package struct ActionOptions: ActionDispatchOptions {
             throw CLIError("Invalid URL for \(option): \(raw)")
         }
         return url
+    }
+
+    private static func pressButton(_ raw: String) throws -> String {
+        let normalized = raw
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+        switch normalized {
+        case "up":
+            return "up"
+        case "down":
+            return "down"
+        case "left":
+            return "left"
+        case "right":
+            return "right"
+        case "select", "ok", "enter":
+            return "select"
+        case "menu", "back":
+            return "menu"
+        case "playpause", "play":
+            return "playPause"
+        default:
+            throw CLIError("Unknown press button: \(raw). Expected up, down, left, right, select, menu, or playPause")
+        }
     }
 }
