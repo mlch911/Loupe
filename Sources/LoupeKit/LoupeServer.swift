@@ -186,6 +186,13 @@ public final class LoupeServer: @unchecked Sendable {
             } catch {
                 return ResponsePayload(status: 500, body: errorBody("network_encoding_failed", error: error))
             }
+        case "/refs":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.runtimeReferenceEvidence())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("refs_encoding_failed", error: error))
+            }
         case "/environment":
             do {
                 let response: LoupeEnvironmentMutationResponse

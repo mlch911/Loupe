@@ -2,8 +2,9 @@
 
 Last verified: 2026-05-22.
 
-Loupe is a runtime E2E harness for iOS Simulator apps. The current product
-surface is the `loupe` CLI plus the injected runtime server.
+Loupe is a runtime diagnostic and E2E harness for Apple-platform apps. The
+current product surface is the `loupe` CLI plus injected or linked LoupeKit
+runtime servers.
 
 ## Current Capabilities
 
@@ -14,6 +15,8 @@ surface is the `loupe` CLI plus the injected runtime server.
   or `loupe use <bundle-id>`.
 - Capture full snapshots, compact observations, accessibility trees, visible
   screen maps, screenshots, layout audits, runtime logs, and action traces.
+- Read app-authored network events, reference evidence, defaults/flags, and
+  keychain metadata from the running app.
 - Query and inspect nodes by `testID`, text, role, or ref.
 - Dispatch simulator-visible `tap`, `swipe`, `drag`, and `type` through Loupe's
   native host-side HID backend.
@@ -50,9 +53,9 @@ It runs:
 
 GitHub Actions uses the same command for the `Post-change E2E` required check.
 
-## Design And UI Iteration
+## Runtime Diagnosis And UI Iteration
 
-For design or screenshot-driven work, the expected loop is:
+For diagnosis, design, or screenshot-driven work, the expected loop is:
 
 ```bash
 loupe capture-report --bundle-id com.example.App --output loupe-report
@@ -69,7 +72,8 @@ clipping, and UIKit metadata.
 
 ## Current Limits
 
-- iOS Simulator only; physical devices are out of scope.
+- Runtime observation is covered by iOS Simulator injection plus linked macOS
+  AppKit and tvOS Simulator examples; physical devices are out of scope.
 - `loupe pinch` keeps the intended API shape but HID dispatch is not implemented.
 - Native `UIAccessibility` container traversal is opt-in with
   `LOUPE_NATIVE_ACCESSIBILITY=1`; the default runtime path uses Loupe's

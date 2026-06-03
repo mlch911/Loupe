@@ -11,15 +11,21 @@ swift build --product loupe --product MacLoupeExample
 
 APP_LOG="/tmp/loupe-macos-example.log"
 SNAPSHOT_PATH="/tmp/loupe-macos-snapshot.json"
+DARK_SNAPSHOT_PATH="/tmp/loupe-macos-dark-snapshot.json"
 LOGS_PATH="/tmp/loupe-macos-logs.json"
 NETWORK_PATH="/tmp/loupe-macos-network.json"
+REFS_PATH="/tmp/loupe-macos-refs.json"
 FLAG_PATH="/tmp/loupe-macos-flag.json"
 FLAG_SET_PATH="/tmp/loupe-macos-flag-set.json"
+KEYCHAIN_PATH="/tmp/loupe-macos-keychain.json"
+HIT_TEST_PATH="/tmp/loupe-macos-hit-test.json"
+RESPONDER_PATH="/tmp/loupe-macos-responder-chain.json"
 ENV_PATH="/tmp/loupe-macos-env.json"
+AUDIT_PATH="/tmp/loupe-macos-audit.json"
 INSPECT_PATH="/tmp/loupe-macos-inspect.json"
 QUERY_PATH="/tmp/loupe-macos-query.json"
 
-rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$INSPECT_PATH" "$QUERY_PATH"
+rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_PATH" "$QUERY_PATH"
 
 LOUPE_PORT="$PORT" .build/debug/MacLoupeExample >"$APP_LOG" 2>&1 &
 APP_PID=$!
@@ -59,9 +65,22 @@ done
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id mac.example.root > "$INSPECT_PATH"
 .build/debug/loupe debug console --host "$HOST" --output "$LOGS_PATH" >/dev/null
 .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
+.build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
 .build/debug/loupe state flags get mac-new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
 .build/debug/loupe state flags set mac-new-nav --bool true --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
+.build/debug/loupe state keychain list --host "$HOST" --output "$KEYCHAIN_PATH" >/dev/null
+BUTTON_POINT="$(ruby -rjson -e '
+  snapshot = JSON.parse(File.read(ARGV.fetch(0)))
+  node = snapshot.fetch("nodes").values.find { |candidate| candidate["testID"] == "mac.example.refresh" }
+  abort "missing mac.example.refresh frame" unless node && node["frame"]
+  frame = node.fetch("frame")
+  puts "#{(frame.fetch("x") + frame.fetch("width") / 2.0).round},#{(frame.fetch("y") + frame.fetch("height") / 2.0).round}"
+' "$SNAPSHOT_PATH")"
+.build/debug/loupe ui hit-test --host "$HOST" --point "$BUTTON_POINT" --output "$HIT_TEST_PATH" >/dev/null
+.build/debug/loupe ui responder-chain --host "$HOST" --test-id mac.example.refresh --output "$RESPONDER_PATH" >/dev/null
 .build/debug/loupe env appearance dark --host "$HOST" --output "$ENV_PATH" >/dev/null
+.build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$DARK_SNAPSHOT_PATH" >/dev/null
+.build/debug/loupe ui audit "$DARK_SNAPSHOT_PATH" --kind lowTextContrast > "$AUDIT_PATH"
 .build/debug/loupe env appearance system --host "$HOST" >/dev/null
 
 ruby -rjson -e '
@@ -80,7 +99,15 @@ ruby -rjson -e '
   abort "missing mac_example_visible log" unless logs.any? { |entry| entry["message"] == "mac_example_visible" }
 
   network = JSON.parse(File.read(ARGV.fetch(4)))
-  abort "missing macOS network fixture" unless network.any? { |entry| entry["url"] == "https://api.example.test/macos/workbench" && entry["statusCode"] == 200 }
+  event = network.find { |entry| entry["url"] == "https://api.example.test/macos/workbench" }
+  abort "missing macOS network fixture" unless event
+  abort "expected macOS network status 200" unless event["statusCode"] == 200
+  abort "expected macOS GET method" unless event["method"] == "GET"
+  abort "expected macOS network metadata" unless event.dig("metadata", "screen", "value") == "workbench"
+  abort "expected macOS response body" unless event["responseBody"]&.include?("macOS")
+
+  refs = JSON.parse(File.read(ARGV.fetch(8)))
+  abort "missing macOS reference evidence" unless refs.any? { |entry| entry["owner"] == "MacWorkbenchController" && entry["target"] == "DeviceActuationService" }
 
   flag = JSON.parse(File.read(ARGV.fetch(5)))
   abort "expected mac-new-nav=false" unless flag.dig("value", "value") == false
@@ -88,9 +115,23 @@ ruby -rjson -e '
   flag_set = JSON.parse(File.read(ARGV.fetch(6)))
   abort "expected mac-new-nav=true after set" unless flag_set.dig("after", "value") == true
 
+  keychain = JSON.parse(File.read(ARGV.fetch(9)))
+  abort "missing macOS keychain fixture metadata" unless keychain.any? { |entry| entry["service"] == "dev.loupe.macos-example" && entry["account"] == "fixture" }
+
+  hit = JSON.parse(File.read(ARGV.fetch(10)))
+  abort "expected mac.example.refresh hit-test" unless hit["hitTestID"] == "mac.example.refresh"
+
+  responder = JSON.parse(File.read(ARGV.fetch(11)))
+  abort "expected mac.example.refresh responder chain" unless responder.fetch("responderChain").any? { |entry| entry["testID"] == "mac.example.refresh" }
+
   env = JSON.parse(File.read(ARGV.fetch(7)))
   abort "expected dark appearance" unless env["appearance"] == "dark"
-' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH"
+
+  audit = JSON.parse(File.read(ARGV.fetch(12)))
+  target_ids = ["mac.example.title", "mac.example.status", "mac.example.refresh"]
+  bad_contrast = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && target_ids.include?(issue["testID"]) }
+  abort "unexpected macOS dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
+' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH"
 
 echo "macOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

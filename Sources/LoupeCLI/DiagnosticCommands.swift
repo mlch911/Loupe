@@ -9,7 +9,7 @@ extension LoupeCLI {
     SUBCOMMANDS:
       console                 Fetch app-authored runtime logs.
       network                 Fetch app-authored network events.
-      refs                    Explain registered object reference support.
+      refs                    Fetch app-authored object reference evidence.
     """
 
     static let stateUsage = """
@@ -54,10 +54,11 @@ extension LoupeCLI {
                 usage: "loupe debug network [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
             )
         case "refs", "heap", "object-graph":
-            print("""
-            Loupe debug refs is registry-based. Apps can expose object ownership evidence through Loupe.log metadata, Loupe.recordNetwork metadata, or view metadata notifications.
-            Full heap reference graph traversal is not implemented because it requires private or unsafe runtime instrumentation.
-            """)
+            try await runtimeFetch(
+                rest,
+                path: "/refs",
+                usage: "loupe debug refs [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
         default:
             throw CLIError("Unknown debug command: \(subcommand)")
         }

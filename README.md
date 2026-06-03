@@ -2,12 +2,12 @@
   <img src="Docs/Assets/loupe-wordmark.svg" alt="Loupe" width="360">
 </p>
 
-A CLI that gives agents runtime UI context through small primitives and
-skill-driven workflows.
+A runtime diagnostic CLI that gives agents inspectable app state through small
+primitives and skill-driven workflows.
 
-Loupe lets LLM agents inspect, interact with, and verify UI behavior in running
-iOS Simulator apps through UIKit view hierarchies and properties, accessibility
-metadata, screenshots, and simulator input.
+Loupe lets LLM agents inspect, interact with, and verify behavior in running
+Apple-platform apps through view hierarchies and properties, accessibility
+metadata, screenshots, logs, network/state evidence, and host-visible input.
 
 ## Demo
 
@@ -35,16 +35,18 @@ loupe skills install
 
 ## Environment
 
-Loupe currently targets iOS Simulator apps on macOS. The command interface is
-organized around targets and capabilities so macOS, tvOS, and other backends can
-be added without turning every platform feature into a new top-level command.
+Loupe currently supports injected iOS Simulator apps plus linked LoupeKit
+runtimes for macOS AppKit apps and tvOS Simulator apps. The command interface is
+organized around targets and capabilities so platform support can expand without
+turning every platform feature into a new top-level command.
 
 Requirements:
 
 - macOS 14 or later.
-- Xcode with iOS Simulator installed.
+- Xcode with the needed iOS and tvOS Simulator runtimes installed.
 
-Xcode and simulator versions can affect runtime injection and native HID input.
+Xcode and simulator versions can affect runtime injection, native HID input, and
+platform-specific runtime behavior.
 
 Loupe chooses an available localhost port for injected apps and records the
 runtime. Use `--bundle-id`, `--udid`, or `loupe target use <bundle-id>` to
@@ -55,7 +57,7 @@ select the target app instead of hard-coding a host port.
 For agent workflows, start with this context:
 
 ```text
-Use Loupe as the runtime context for this iOS app. Inspect view and accessibility trees, act through simulator input, and verify behavior with traces before editing code.
+Use Loupe as the runtime context for this app. Inspect view and accessibility trees, collect runtime evidence, act through host-visible input when supported, and verify behavior with traces before editing code.
 ```
 
 For direct CLI control:
@@ -85,6 +87,41 @@ env     Change runtime environment such as appearance.
 perf    Run lightweight runtime performance probes.
 skills   Install Loupe workflow skills.
 ```
+
+## How Loupe Answers Runtime Questions
+
+Loupe keeps the CLI small and lets skills compose commands into platform-aware
+diagnostic loops. These are Loupe-native versions of common agent questions:
+
+| Question | Loupe loop |
+| --- | --- |
+| Why is this list empty? | `observe` the screen, inspect the list node, fetch app-authored `debug network` and `debug console` evidence, then read relevant `state flags`. |
+| What still references this service? | Fetch `debug refs` app-authored ownership evidence. Loupe does not claim private heap graph traversal. |
+| Is dark mode hiding text? | Set `env appearance dark`, capture a fresh snapshot, and run `ui audit --kind lowTextContrast`. |
+| Why does this button not respond? | Run `ui hit-test` at the point, inspect the `ui responder-chain`, then compare accessibility and visible view state. |
+| Is this scroll hitching? | Run `perf scroll` with a trace directory, then summarize the trace and verify offset deltas. |
+| Did logout clear secrets? | Use `state keychain list` before and after the app's logout flow and assert the expected items are gone. |
+| Does the old feature-flag flow still work? | Change `state flags`, reload or relaunch the runtime, act through the old flow, and diff the resulting trace. |
+
+The examples verify these primitives across iOS Simulator, macOS, and tvOS where
+the platform backend supports them. iOS Simulator also verifies native HID scroll
+profiling; macOS currently uses runtime observation/state evidence rather than a
+host HID action backend.
+
+## How Loupe Differs From Xcode MCP Tooling
+
+[Apple's Xcode MCP bridge](https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode)
+and tools such as [XcodeBuildMCP](https://www.xcodebuildmcp.com/docs) help
+agents operate the Apple development toolchain: discover projects, build, test,
+launch, manage simulators, inspect build output, and access Xcode or Apple
+documentation context.
+
+Loupe sits inside the running app. It captures runtime UI structure, framework
+properties, accessibility state, screenshots, logs, app-authored network events,
+defaults/flags/keychain metadata, reference evidence, and action traces. Use
+Xcode tooling to build and launch the app; use Loupe to answer what is actually
+on screen, what runtime state the app exposed, what changed after an action, and
+why a visible behavior failed.
 
 ## Inspect Runtime UI
 
@@ -167,12 +204,13 @@ loupe trace summary /tmp/loupe-scroll
 
 `debug network` records app-authored network events, so apps should call
 `Loupe.recordNetwork(...)` or post the `dev.loupe.network` bridge notification
-where automatic URL loading interception is not available. `debug refs` is
-currently registry/log evidence, not a full heap reference graph. `perf scroll`
-records elapsed time and trace-based scroll offset deltas; frame-level hitch
-classification still requires deeper instrumentation.
+where automatic URL loading interception is not available. `debug refs` records
+app-authored ownership evidence through `Loupe.recordReference(...)` or the
+`dev.loupe.reference` bridge notification; it is not a private heap reference
+graph. `perf scroll` records elapsed time and trace-based scroll offset deltas;
+frame-level hitch classification still requires deeper instrumentation.
 
-## Runtime UI Experiments
+## Runtime Diagnostic Experiments
 
 Runtime mutation is optional. Use it for quick design/debug experiments on
 supported UIKit properties, not as the guaranteed path for every UI change.
@@ -223,10 +261,7 @@ checks.
 Loupe's simulator inspection and action direction is inspired by
 [AXe](https://github.com/cameroncooke/AXe),
 [Baguette](https://github.com/tddworks/baguette), and
-[Pepper](https://github.com/skwallace36/Pepper). Pepper is especially useful as
-a reference for the kinds of diagnosis questions agents should be able to
-answer, such as empty-list network debugging, dark-mode contrast checks,
-responder-chain failures, scroll performance hitches, storage audits, and
-feature-flag regression checks. Loupe keeps those workflows skill-driven and
-builds the CLI around stable observe, act, inspect, UI, trace, and runtime
+[Pepper](https://github.com/skwallace36/Pepper). Loupe treats those projects as
+related work, not as an API template: its workflows stay skill-driven and its
+CLI is built around stable observe, act, inspect, UI, trace, and runtime
 primitives.

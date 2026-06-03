@@ -1,6 +1,7 @@
 import UIKit
 import LoupeCore
 import LoupeKit
+import Security
 
 final class TVViewController: UIViewController {
     private let statusLabel = UILabel()
@@ -29,6 +30,8 @@ final class TVViewController: UIViewController {
         let button = UIButton(type: .system)
         button.accessibilityIdentifier = "tv.example.refresh"
         button.setTitle("Refresh snapshot", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.setTitleColor(UIColor(red: 0.74, green: 0.91, blue: 1, alpha: 1), for: .focused)
         button.titleLabel?.font = .systemFont(ofSize: 34, weight: .semibold)
         button.addTarget(self, action: #selector(refreshStatus), for: .primaryActionTriggered)
 
@@ -109,6 +112,14 @@ final class TVViewController: UIViewController {
             responseBody: #"{"platform":"tvOS","status":"ok"}"#,
             metadata: ["screen": .string("workbench")]
         )
+        Loupe.recordReference(
+            owner: "TVWorkbenchController",
+            target: "DeviceActuationService",
+            kind: "strong",
+            label: "fixture service reference",
+            metadata: ["screen": .string("workbench")]
+        )
+        upsertKeychainFixture()
     }
 
     @objc private func refreshStatus() {
@@ -122,5 +133,22 @@ final class TVViewController: UIViewController {
                 "metadata": ["screen": "workbench"],
             ]
         )
+    }
+
+    private func upsertKeychainFixture() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "dev.loupe.tvos-example",
+            kSecAttrAccount as String: "fixture",
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data("fixture-token".utf8),
+        ]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = Data("fixture-token".utf8)
+            SecItemAdd(item as CFDictionary, nil)
+        }
     }
 }

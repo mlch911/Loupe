@@ -75,8 +75,10 @@ curl -sS "$HOST/health"
 echo
 
 SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
+DARK_SNAPSHOT_PATH="/tmp/loupe-example-dark-snapshot.json"
 LOGS_PATH="/tmp/loupe-example-logs.json"
 NETWORK_PATH="/tmp/loupe-example-network.json"
+REFS_PATH="/tmp/loupe-example-refs.json"
 FLAG_PATH="/tmp/loupe-example-flag.json"
 FLAG_SET_PATH="/tmp/loupe-example-flag-set.json"
 KEYCHAIN_PATH="/tmp/loupe-example-keychain.json"
@@ -84,6 +86,7 @@ HIT_TEST_PATH="/tmp/loupe-example-hit-test.json"
 RESPONDER_PATH="/tmp/loupe-example-responder-chain.json"
 ENV_PATH="/tmp/loupe-example-env.json"
 ENV_READ_PATH="/tmp/loupe-example-env-read.json"
+AUDIT_PATH="/tmp/loupe-example-audit.json"
 PERF_PATH="/tmp/loupe-example-perf.json"
 PERF_TRACE="/tmp/loupe-example-perf-trace"
 INSPECT_PATH="/tmp/loupe-example-inspect.json"
@@ -91,6 +94,7 @@ rm -rf "$PERF_TRACE"
 curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
 .build/debug/loupe debug console --host "$HOST" --output "$LOGS_PATH" >/dev/null
 .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
+.build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
 .build/debug/loupe state flags get new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
 .build/debug/loupe state flags set new-nav --bool false --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
 .build/debug/loupe state keychain list --host "$HOST" --output "$KEYCHAIN_PATH" >/dev/null
@@ -98,6 +102,8 @@ curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
 .build/debug/loupe ui responder-chain --host "$HOST" --test-id example.customerList --output "$RESPONDER_PATH" >/dev/null
 .build/debug/loupe env appearance --host "$HOST" --output "$ENV_READ_PATH" >/dev/null
 .build/debug/loupe env appearance dark --host "$HOST" --output "$ENV_PATH" >/dev/null
+curl -sS "$HOST/snapshot" > "$DARK_SNAPSHOT_PATH"
+.build/debug/loupe ui audit "$DARK_SNAPSHOT_PATH" --kind lowTextContrast > "$AUDIT_PATH"
 .build/debug/loupe env appearance system --host "$HOST" >/dev/null
 .build/debug/loupe perf scroll --host "$HOST" --udid "$DEVICE" --from 201,740 --to 201,320 --trace-dir "$PERF_TRACE" --output "$PERF_PATH" >/dev/null
 
@@ -119,6 +125,11 @@ ruby -rjson -e '
   event = network.find { |entry| entry["url"] == "https://api.example.test/customers" }
   abort "missing customers network event" unless event
   abort "expected network status 200" unless event["statusCode"] == 200
+  abort "expected GET method" unless event["method"] == "GET"
+  abort "expected customers network metadata" unless event.dig("metadata", "screen", "value") == "customers"
+  abort "expected customers response body" unless event["responseBody"]&.include?("Customer 1")
+  refs = JSON.parse(File.read(ARGV.fetch(12)))
+  abort "missing customer reference evidence" unless refs.any? { |entry| entry["owner"] == "CustomerListViewController" && entry["target"] == "DeviceActuationService" && entry["kind"] == "strong" }
   flag = JSON.parse(File.read(ARGV.fetch(3)))
   abort "expected new-nav=false" unless flag.dig("value", "value") == false
   flag_set = JSON.parse(File.read(ARGV.fetch(8)))
@@ -132,6 +143,10 @@ ruby -rjson -e '
   abort "expected UITableView in responder chain" unless responder.fetch("responderChain").any? { |entry| entry["typeName"] == "UITableView" }
   env = JSON.parse(File.read(ARGV.fetch(7)))
   abort "expected dark appearance, got #{env["appearance"].inspect}" unless env["appearance"] == "dark"
+  audit = JSON.parse(File.read(ARGV.fetch(13)))
+  target_ids = ["example.customer.1.title", "example.customer.1.subtitle", "example.customer.1.status"]
+  bad_contrast = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && target_ids.include?(issue["testID"]) }
+  abort "unexpected dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
   env_read = JSON.parse(File.read(ARGV.fetch(9)))
   abort "expected env read appearance key" unless env_read.key?("appearance")
   perf = JSON.parse(File.read(ARGV.fetch(10)))
@@ -140,8 +155,11 @@ ruby -rjson -e '
   abort "expected perf before offset" unless perf["beforeOffset"].is_a?(Hash)
   abort "expected perf after offset" unless perf["afterOffset"].is_a?(Hash)
   abort "expected perf delta" unless perf["delta"].is_a?(Hash)
+  abort "expected changed scroll offset" unless perf["beforeOffset"] != perf["afterOffset"]
+  delta_y = perf.dig("delta", "y").to_f
+  abort "expected nonzero scroll delta" unless delta_y.abs > 1
   inspection = JSON.parse(File.read(ARGV.fetch(1)))
   custom = inspection.fetch("node").fetch("custom")
   abort "expected inspect screen=customers" unless custom.dig("screen", "value") == "customers"
   abort "expected inspect fixture=true" unless custom.dig("fixture", "value") == true
-' "$LOGS_PATH" "$INSPECT_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$FLAG_SET_PATH" "$ENV_READ_PATH" "$PERF_PATH" "$PERF_TRACE"
+' "$LOGS_PATH" "$INSPECT_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$FLAG_SET_PATH" "$ENV_READ_PATH" "$PERF_PATH" "$PERF_TRACE" "$REFS_PATH" "$AUDIT_PATH"

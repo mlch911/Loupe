@@ -36,6 +36,52 @@ import AppKit
                 && log.metadata["index"] == .int(500)
         })
     }
+
+    @MainActor
+    @Test func runtimeReferenceBridgeRecordsAppAuthoredEvidence() {
+        let runtime = LoupeRuntime.shared
+        runtime.activateBridge()
+
+        NotificationCenter.default.post(
+            name: .loupeReference,
+            object: nil,
+            userInfo: [
+                "owner": "PlatformFixtureController",
+                "target": "DeviceActuationService",
+                "kind": "strong",
+                "label": "test fixture reference",
+                "metadata": ["screen": "platform"]
+            ]
+        )
+
+        #expect(runtime.runtimeReferenceEvidence().contains { evidence in
+            evidence.owner == "PlatformFixtureController"
+                && evidence.target == "DeviceActuationService"
+                && evidence.kind == "strong"
+                && evidence.label == "test fixture reference"
+                && evidence.metadata["screen"] == .string("platform")
+        })
+    }
+
+    @MainActor
+    @Test func runtimeReferenceEvidenceKeepsMostRecentFiveHundredEntries() {
+        let runtime = LoupeRuntime.shared
+
+        for index in 0...500 {
+            runtime.recordReference(
+                LoupeReferenceEvidence(
+                    owner: "retention-owner-\(index)",
+                    target: "DeviceActuationService"
+                )
+            )
+        }
+
+        let refs = runtime.runtimeReferenceEvidence()
+
+        #expect(refs.count == 500)
+        #expect(!refs.contains { $0.owner == "retention-owner-0" })
+        #expect(refs.contains { $0.owner == "retention-owner-500" })
+    }
 }
 #endif
 

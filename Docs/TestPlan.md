@@ -28,6 +28,9 @@ and the generated `/tmp/loupe-*` logs or screenshots before handing work back.
 
 ## Design-to-Code Evaluation
 
+This is a benchmark workflow, not Loupe's primary positioning; the same runtime
+evidence should also support functional debugging and regression checks.
+
 When evaluating whether Loupe improves implementation quality, use a blind
 baseline instead of reusing the current agent's context.
 

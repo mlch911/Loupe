@@ -2,6 +2,8 @@
 
 Loupe does not call the Figma API directly. The comparison command consumes a
 small exported design JSON produced by a plugin, script, or manual fixture.
+Figma comparison is one fixture workflow built on the same runtime evidence used
+for UI diagnosis and regression checks.
 
 ## Minimal Design JSON
 

@@ -17,6 +17,7 @@ public final class LoupeRuntime {
     public let identity: LoupeRuntimeIdentity
     private var logs: [LoupeRuntimeLog] = []
     private var networkEvents: [LoupeNetworkEvent] = []
+    private var referenceEvidence: [LoupeReferenceEvidence] = []
     private var metadataByTestID: [String: [String: LoupeMetadataValue]] = [:]
     private var didInstallBridge = false
 
@@ -44,6 +45,10 @@ public final class LoupeRuntime {
 
     public func runtimeNetworkEvents() -> [LoupeNetworkEvent] {
         networkEvents
+    }
+
+    public func runtimeReferenceEvidence() -> [LoupeReferenceEvidence] {
+        referenceEvidence
     }
 
     func metadata(forTestID testID: String?) -> [String: LoupeMetadataValue] {
@@ -78,6 +83,13 @@ public final class LoupeRuntime {
         }
     }
 
+    public func recordReference(_ evidence: LoupeReferenceEvidence) {
+        referenceEvidence.append(evidence)
+        if referenceEvidence.count > 500 {
+            referenceEvidence.removeFirst(referenceEvidence.count - 500)
+        }
+    }
+
     private func installBridgeIfNeeded() {
         guard !didInstallBridge else {
             return
@@ -100,6 +112,12 @@ public final class LoupeRuntime {
             self,
             selector: #selector(receiveNetworkNotification(_:)),
             name: .loupeNetwork,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(receiveReferenceNotification(_:)),
+            name: .loupeReference,
             object: nil
         )
         didInstallBridge = true
@@ -181,6 +199,24 @@ public final class LoupeRuntime {
         }
     }
 
+    @objc private nonisolated func receiveReferenceNotification(_ notification: Notification) {
+        guard let payload = LoupeReferenceNotificationPayload(notification: notification) else {
+            return
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.recordReference(payload.evidence)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.recordReference(payload.evidence)
+                }
+            }
+        }
+    }
+
 }
 
 public enum Loupe {
@@ -215,6 +251,25 @@ public enum Loupe {
             )
         )
     }
+
+    @MainActor
+    public static func recordReference(
+        owner: String,
+        target: String,
+        kind: String? = nil,
+        label: String? = nil,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        LoupeRuntime.shared.recordReference(
+            LoupeReferenceEvidence(
+                owner: owner,
+                target: target,
+                kind: kind,
+                label: label,
+                metadata: metadata
+            )
+        )
+    }
 }
 
 private func nonEmpty(_ value: String?) -> String? {
@@ -230,7 +285,7 @@ private func metadataPayload(from userInfo: [AnyHashable: Any]) -> [String: Loup
     }
 
     var payload: [String: LoupeMetadataValue] = [:]
-    let reservedKeys: Set<String> = ["level", "message", "metadata", "view", "testID", "id"]
+    let reservedKeys: Set<String> = ["level", "message", "metadata", "view", "testID", "id", "owner", "target", "kind", "label"]
     for (rawKey, rawValue) in userInfo {
         guard let key = rawKey as? String, !reservedKeys.contains(key), let value = loupeMetadataValue(from: rawValue) else {
             continue
@@ -333,10 +388,31 @@ private struct LoupeNetworkNotificationPayload: Sendable {
     }
 }
 
+private struct LoupeReferenceNotificationPayload: Sendable {
+    var evidence: LoupeReferenceEvidence
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let owner = nonEmpty(userInfo["owner"] as? String),
+              let target = nonEmpty(userInfo["target"] as? String) else {
+            return nil
+        }
+
+        evidence = LoupeReferenceEvidence(
+            owner: owner,
+            target: target,
+            kind: nonEmpty(userInfo["kind"] as? String),
+            label: nonEmpty(userInfo["label"] as? String),
+            metadata: metadataPayload(from: userInfo)
+        )
+    }
+}
+
 public extension Notification.Name {
     static let loupeLog = Notification.Name("dev.loupe.log")
     static let loupeViewMetadata = Notification.Name("dev.loupe.viewMetadata")
     static let loupeNetwork = Notification.Name("dev.loupe.network")
+    static let loupeReference = Notification.Name("dev.loupe.reference")
 }
 
 #endif

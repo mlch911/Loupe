@@ -134,6 +134,17 @@ final class ViewController: UITableViewController {
                 "metadata": ["screen": "customers"]
             ]
         )
+        NotificationCenter.default.post(
+            name: Notification.Name("dev.loupe.reference"),
+            object: nil,
+            userInfo: [
+                "owner": "CustomerListViewController",
+                "target": "DeviceActuationService",
+                "kind": "strong",
+                "label": "fixture service reference",
+                "metadata": ["screen": "customers"]
+            ]
+        )
         UserDefaults.standard.set(false, forKey: "new-nav")
         upsertLoupeKeychainFixture()
     }
@@ -251,7 +262,12 @@ final class ExampleCell: UITableViewCell {
         subtitleLabel.textColor = .secondaryLabel
         badgeLabel.font = .preferredFont(forTextStyle: .caption1)
         badgeLabel.textAlignment = .center
-        badgeLabel.backgroundColor = .tertiarySystemFill
+        badgeLabel.textColor = .label
+        badgeLabel.backgroundColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.16, alpha: 1)
+                : UIColor(white: 0.92, alpha: 1)
+        }
         badgeLabel.layer.cornerRadius = 6
         badgeLabel.layer.masksToBounds = true
 

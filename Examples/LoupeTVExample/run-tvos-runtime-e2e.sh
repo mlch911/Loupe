@@ -92,16 +92,22 @@ for _ in {1..120}; do
 done
 
 SNAPSHOT_PATH="/tmp/loupe-tvos-snapshot.json"
+DARK_SNAPSHOT_PATH="/tmp/loupe-tvos-dark-snapshot.json"
 RUNTIME_PATH="/tmp/loupe-tvos-runtime.json"
 LOGS_PATH="/tmp/loupe-tvos-logs.json"
 NETWORK_PATH="/tmp/loupe-tvos-network.json"
+REFS_PATH="/tmp/loupe-tvos-refs.json"
 FLAG_PATH="/tmp/loupe-tvos-flag.json"
 FLAG_SET_PATH="/tmp/loupe-tvos-flag-set.json"
+KEYCHAIN_PATH="/tmp/loupe-tvos-keychain.json"
+HIT_TEST_PATH="/tmp/loupe-tvos-hit-test.json"
+RESPONDER_PATH="/tmp/loupe-tvos-responder-chain.json"
 ENV_PATH="/tmp/loupe-tvos-env.json"
+AUDIT_PATH="/tmp/loupe-tvos-audit.json"
 INSPECT_ROOT_PATH="/tmp/loupe-tvos-inspect-root.json"
 INSPECT_LIST_PATH="/tmp/loupe-tvos-inspect-list.json"
 QUERY_PATH="/tmp/loupe-tvos-query.json"
-rm -f "$SNAPSHOT_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$QUERY_PATH"
+rm -f "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$QUERY_PATH"
 
 curl -fsS "$HOST/health" | grep -q LoupeKit
 .build/debug/loupe runtime info --host "$HOST" --udid "$DEVICE" > "$RUNTIME_PATH"
@@ -123,9 +129,22 @@ done
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id tv.example.collection > "$INSPECT_LIST_PATH"
 .build/debug/loupe debug console --host "$HOST" --output "$LOGS_PATH" >/dev/null
 .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
+.build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
 .build/debug/loupe state flags get tv-new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
 .build/debug/loupe state flags set tv-new-nav --bool true --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
+.build/debug/loupe state keychain list --host "$HOST" --output "$KEYCHAIN_PATH" >/dev/null
+BUTTON_POINT="$(ruby -rjson -e '
+  snapshot = JSON.parse(File.read(ARGV.fetch(0)))
+  node = snapshot.fetch("nodes").values.find { |candidate| candidate["testID"] == "tv.example.refresh" }
+  abort "missing tv.example.refresh frame" unless node && node["frame"]
+  frame = node.fetch("frame")
+  puts "#{(frame.fetch("x") + frame.fetch("width") / 2.0).round},#{(frame.fetch("y") + frame.fetch("height") / 2.0).round}"
+' "$SNAPSHOT_PATH")"
+.build/debug/loupe ui hit-test --host "$HOST" --point "$BUTTON_POINT" --output "$HIT_TEST_PATH" >/dev/null
+.build/debug/loupe ui responder-chain --host "$HOST" --test-id tv.example.refresh --output "$RESPONDER_PATH" >/dev/null
 .build/debug/loupe env appearance dark --host "$HOST" --output "$ENV_PATH" >/dev/null
+.build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$DARK_SNAPSHOT_PATH" >/dev/null
+.build/debug/loupe ui audit "$DARK_SNAPSHOT_PATH" --kind lowTextContrast > "$AUDIT_PATH"
 .build/debug/loupe env appearance system --host "$HOST" >/dev/null
 
 ruby -rjson -e '
@@ -153,7 +172,15 @@ ruby -rjson -e '
   abort "missing tv_example_visible log" unless logs.any? { |entry| entry["message"] == "tv_example_visible" }
 
   network = JSON.parse(File.read(ARGV.fetch(6)))
-  abort "missing tvOS network fixture" unless network.any? { |entry| entry["url"] == "https://api.example.test/tvos/workbench" && entry["statusCode"] == 200 }
+  event = network.find { |entry| entry["url"] == "https://api.example.test/tvos/workbench" }
+  abort "missing tvOS network fixture" unless event
+  abort "expected tvOS network status 200" unless event["statusCode"] == 200
+  abort "expected tvOS GET method" unless event["method"] == "GET"
+  abort "expected tvOS network metadata" unless event.dig("metadata", "screen", "value") == "workbench"
+  abort "expected tvOS response body" unless event["responseBody"]&.include?("tvOS")
+
+  refs = JSON.parse(File.read(ARGV.fetch(11)))
+  abort "missing tvOS reference evidence" unless refs.any? { |entry| entry["owner"] == "TVWorkbenchController" && entry["target"] == "DeviceActuationService" }
 
   flag = JSON.parse(File.read(ARGV.fetch(7)))
   abort "expected tv-new-nav=false" unless flag.dig("value", "value") == false
@@ -161,9 +188,24 @@ ruby -rjson -e '
   flag_set = JSON.parse(File.read(ARGV.fetch(8)))
   abort "expected tv-new-nav=true after set" unless flag_set.dig("after", "value") == true
 
+  keychain = JSON.parse(File.read(ARGV.fetch(12)))
+  abort "missing tvOS keychain fixture metadata" unless keychain.any? { |entry| entry["service"] == "dev.loupe.tvos-example" && entry["account"] == "fixture" }
+
+  hit = JSON.parse(File.read(ARGV.fetch(13)))
+  abort "expected tvOS hit-test evidence" unless hit["hitRef"] && hit["hitTypeName"]
+  abort "expected tv.example.refresh in hit-test responder chain" unless hit.fetch("responderChain").any? { |entry| entry["testID"] == "tv.example.refresh" }
+
+  responder = JSON.parse(File.read(ARGV.fetch(14)))
+  abort "expected tv.example.refresh responder chain" unless responder.fetch("responderChain").any? { |entry| entry["testID"] == "tv.example.refresh" }
+
   env = JSON.parse(File.read(ARGV.fetch(9)))
   abort "expected dark appearance" unless env["appearance"] == "dark"
-' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE"
+
+  audit = JSON.parse(File.read(ARGV.fetch(15)))
+  target_ids = ["tv.example.title", "tv.example.status", "tv.example.refresh"]
+  bad_contrast = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && target_ids.include?(issue["testID"]) }
+  abort "unexpected tvOS dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
+' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH"
 
 echo "tvOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

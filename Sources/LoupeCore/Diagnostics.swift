@@ -34,6 +34,34 @@ public struct LoupeNetworkEvent: Codable, Equatable, Sendable {
     }
 }
 
+public struct LoupeReferenceEvidence: Codable, Equatable, Sendable {
+    public var id: String
+    public var timestamp: Date
+    public var owner: String
+    public var target: String
+    public var kind: String?
+    public var label: String?
+    public var metadata: [String: LoupeMetadataValue]
+
+    public init(
+        id: String = UUID().uuidString,
+        timestamp: Date = Date(),
+        owner: String,
+        target: String,
+        kind: String? = nil,
+        label: String? = nil,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.owner = owner
+        self.target = target
+        self.kind = kind
+        self.label = label
+        self.metadata = metadata
+    }
+}
+
 public struct LoupeStateEntry: Codable, Equatable, Sendable {
     public var key: String
     public var value: LoupeMetadataValue?

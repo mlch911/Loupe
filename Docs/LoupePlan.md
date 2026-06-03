@@ -116,10 +116,10 @@ constraint edits are useful probes, but UIKit owners may restore them during a
 layout pass. Mutation responses include requested and effective state so those
 reversions are visible.
 
-## Design Verification
+## Runtime UI Verification
 
-Design implementation is considered successful only when runtime evidence
-supports it:
+UI implementation is considered successful only when runtime evidence supports
+it. Design comparison is one optional workflow in that loop:
 
 - screen size matches the intended simulator
 - fixed chrome does not scroll with content

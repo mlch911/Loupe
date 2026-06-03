@@ -1,6 +1,7 @@
 import AppKit
 import LoupeCore
 import LoupeKit
+import Security
 
 @main
 enum MacLoupeExample {
@@ -143,10 +144,35 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             responseBody: #"{"platform":"macOS","status":"ok"}"#,
             metadata: ["screen": .string("workbench")]
         )
+        Loupe.recordReference(
+            owner: "MacWorkbenchController",
+            target: "DeviceActuationService",
+            kind: "strong",
+            label: "fixture service reference",
+            metadata: ["screen": .string("workbench")]
+        )
+        upsertKeychainFixture()
     }
 
     @objc private func refreshStatus() {
         statusLabel.stringValue = "Snapshot refreshed"
         Loupe.log("mac_example_refresh_tapped", metadata: ["screen": .string("workbench")])
+    }
+
+    private func upsertKeychainFixture() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "dev.loupe.macos-example",
+            kSecAttrAccount as String: "fixture",
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data("fixture-token".utf8),
+        ]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = Data("fixture-token".utf8)
+            SecItemAdd(item as CFDictionary, nil)
+        }
     }
 }
