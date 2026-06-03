@@ -1,8 +1,12 @@
 import Foundation
 import LoupeKit
 
+#if canImport(UIKit) || canImport(AppKit)
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 @_cdecl("LoupeInjectorStart")
 public func LoupeInjectorStart() {

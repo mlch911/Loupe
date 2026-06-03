@@ -34,7 +34,7 @@ booted_udid() {
   run_with_timeout "$(simctl_list_timeout)" xcrun simctl list devices booted --json >"$list_path"
   ruby -rjson -e '
     devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
-    booted = devices.find { |device| device["state"] == "Booted" }
+    booted = devices.find { |device| device["state"] == "Booted" && device["name"].include?("iPhone") }
     puts booted && booted["udid"]
   ' <"$list_path"
 }
@@ -147,7 +147,7 @@ launch_app() {
     arguments+=(--env "LOUPE_EXAMPLE_ROUTE=$route")
   fi
   local launch_output
-  launch_output="$(.build/debug/loupe launch "${arguments[@]}")"
+  launch_output="$(.build/debug/loupe runtime launch "${arguments[@]}")"
   HOST="$(awk '/^loupe host: / { print $3 }' <<<"$launch_output" | tail -1)"
   if [[ -z "$HOST" ]]; then
     echo "error: loupe launch did not report a runtime host" >&2
@@ -158,26 +158,32 @@ launch_app() {
 }
 
 fetch_snapshot() {
-  .build/debug/loupe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
+  .build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
 }
 
 assert_query() {
   local test_id="$1"
   local output_path="$2"
-  .build/debug/loupe query "$SNAPSHOT_PATH" --test-id "$test_id" > "$output_path"
+  .build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id "$test_id" > "$output_path"
   grep -q '"ref"' "$output_path"
 }
 
 query_ref() {
   local test_id="$1"
-  .build/debug/loupe query "$SNAPSHOT_PATH" --test-id "$test_id" --max-results 1 |
+  .build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id "$test_id" --max-results 1 |
+    ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
+}
+
+query_text_ref() {
+  local text="$1"
+  .build/debug/loupe inspect query "$SNAPSHOT_PATH" --text "$text" --max-results 1 |
     ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
 }
 
 inspect_value() {
   local test_id="$1"
   local path="$2"
-  .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id "$test_id" |
+  .build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id "$test_id" |
     ruby -rjson -e '
       value = JSON.parse(STDIN.read)
       ARGV.fetch(0).split(".").each { |key| value = value.fetch(key) }
@@ -197,13 +203,28 @@ END_X="$(ruby -e 'puts (ARGV.fetch(0).to_f - 24).round' "$WIDTH")"
 
 echo "case: bottom sheet grabber tap expands and internal scroll moves"
 launch_app bottomSheet
-.build/debug/loupe wait-for-visible --host "$HOST" --test-id example.bottomSheet.grabber --timeout 5 >/tmp/loupe-native-wait-bottomsheet.json
+.build/debug/loupe act wait visible --host "$HOST" --test-id example.bottomSheet.grabber --timeout 5 >/tmp/loupe-native-wait-bottomsheet.json
 fetch_snapshot
 assert_query example.bottomSheet.scrollView /tmp/loupe-native-bottomsheet-scroll-query.json
 COLLAPSED_Y="$(inspect_value example.bottomSheet.scrollView node.frame.y)"
 COLLAPSED_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.frame.height)"
+read -r GRABBER_X GRABBER_Y < <(.build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id example.bottomSheet.grabber |
+  ruby -rjson -e '
+    frame = JSON.parse(STDIN.read).fetch("node").fetch("frame")
+    puts [(frame.fetch("x") + frame.fetch("width") / 2.0).round, (frame.fetch("y") + frame.fetch("height") / 2.0).round].join(" ")
+  ')
+DRAG_END_Y="$(ruby -e 'puts [(ARGV.fetch(0).to_f - 280).round, 80].max' "$GRABBER_Y")"
+.build/debug/loupe act drag --host "$HOST" --udid "$DEVICE" --from "$GRABBER_X,$GRABBER_Y" --to "$GRABBER_X,$DRAG_END_Y" --duration 0.5 --trace-dir /tmp/loupe-native-bottomsheet-grabber-drag-trace
+fetch_snapshot
+AFTER_DRAG_Y="$(inspect_value example.bottomSheet.scrollView node.frame.y)"
+AFTER_DRAG_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.frame.height)"
+ruby -e '
+  y_same = (ARGV.fetch(0).to_f - ARGV.fetch(1).to_f).abs < 8
+  height_same = (ARGV.fetch(2).to_f - ARGV.fetch(3).to_f).abs < 8
+  exit(y_same && height_same ? 0 : 1)
+' "$COLLAPSED_Y" "$AFTER_DRAG_Y" "$COLLAPSED_HEIGHT" "$AFTER_DRAG_HEIGHT"
 GRABBER_REF="$(query_ref example.bottomSheet.grabber)"
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$GRABBER_REF" --expect-visible example.bottomSheet.expandedMarker
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$GRABBER_REF" --expect-visible example.bottomSheet.expandedMarker
 fetch_snapshot
 EXPANDED_Y="$(inspect_value example.bottomSheet.scrollView node.frame.y)"
 EXPANDED_HEIGHT="$(inspect_value example.bottomSheet.scrollView node.frame.height)"
@@ -215,13 +236,14 @@ ruby -e '
   exit(moved_up && grew && long_list ? 0 : 1)
 ' "$EXPANDED_Y" "$COLLAPSED_Y" "$EXPANDED_HEIGHT" "$COLLAPSED_HEIGHT" "$CONTENT_HEIGHT"
 
-echo "case: navigation pop by interactive edge drag from routed detail screen"
+echo "case: navigation pop by ref from routed detail screen"
 launch_app detail
-.build/debug/loupe wait-for-visible --host "$HOST" --test-id example.detail --timeout 5 >/tmp/loupe-native-wait-detail.json
+.build/debug/loupe act wait visible --host "$HOST" --test-id example.detail --timeout 5 >/tmp/loupe-native-wait-detail.json
 fetch_snapshot
 assert_query example.detail /tmp/loupe-native-detail-query.json
-.build/debug/loupe drag --udid "$DEVICE" --from "4,$MID_Y" --to "$END_X,$MID_Y" --duration 0.8
-.build/debug/loupe wait-for-visible --host "$HOST" --test-id example.customerList --timeout 5 >/tmp/loupe-native-wait-list.json
+DETAIL_BACK_REF="$(query_text_ref Back)"
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$DETAIL_BACK_REF"
+.build/debug/loupe act wait visible --host "$HOST" --test-id example.customerList --timeout 5 >/tmp/loupe-native-wait-list.json
 fetch_snapshot
 assert_query example.customerList /tmp/loupe-native-list-query.json
 

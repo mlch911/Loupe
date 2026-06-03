@@ -1,8 +1,14 @@
 import Foundation
 import LoupeCore
 
+#if canImport(UIKit) || canImport(AppKit)
 #if canImport(UIKit)
 import UIKit
+typealias LoupePlatformView = UIView
+#elseif canImport(AppKit)
+import AppKit
+typealias LoupePlatformView = NSView
+#endif
 
 @MainActor
 public final class LoupeRuntime {
@@ -10,6 +16,7 @@ public final class LoupeRuntime {
 
     public let identity: LoupeRuntimeIdentity
     private var logs: [LoupeRuntimeLog] = []
+    private var networkEvents: [LoupeNetworkEvent] = []
     private var metadataByTestID: [String: [String: LoupeMetadataValue]] = [:]
     private var didInstallBridge = false
 
@@ -33,6 +40,10 @@ public final class LoupeRuntime {
 
     public func runtimeLogs() -> [LoupeRuntimeLog] {
         logs
+    }
+
+    public func runtimeNetworkEvents() -> [LoupeNetworkEvent] {
+        networkEvents
     }
 
     func metadata(forTestID testID: String?) -> [String: LoupeMetadataValue] {
@@ -60,6 +71,13 @@ public final class LoupeRuntime {
         }
     }
 
+    public func recordNetworkEvent(_ event: LoupeNetworkEvent) {
+        networkEvents.append(event)
+        if networkEvents.count > 500 {
+            networkEvents.removeFirst(networkEvents.count - 500)
+        }
+    }
+
     private func installBridgeIfNeeded() {
         guard !didInstallBridge else {
             return
@@ -76,6 +94,12 @@ public final class LoupeRuntime {
             self,
             selector: #selector(receiveViewMetadataNotification(_:)),
             name: .loupeViewMetadata,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(receiveNetworkNotification(_:)),
+            name: .loupeNetwork,
             object: nil
         )
         didInstallBridge = true
@@ -139,6 +163,24 @@ public final class LoupeRuntime {
         }
     }
 
+    @objc private nonisolated func receiveNetworkNotification(_ notification: Notification) {
+        guard let payload = LoupeNetworkNotificationPayload(notification: notification) else {
+            return
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.recordNetworkEvent(payload.event)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.recordNetworkEvent(payload.event)
+                }
+            }
+        }
+    }
+
 }
 
 public enum Loupe {
@@ -149,6 +191,29 @@ public enum Loupe {
         metadata: [String: LoupeMetadataValue] = [:]
     ) {
         LoupeRuntime.shared.log(level: level, message, metadata: metadata)
+    }
+
+    @MainActor
+    public static func recordNetwork(
+        url: String,
+        method: String? = nil,
+        statusCode: Int? = nil,
+        requestBody: String? = nil,
+        responseBody: String? = nil,
+        error: String? = nil,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        LoupeRuntime.shared.recordNetworkEvent(
+            LoupeNetworkEvent(
+                method: method,
+                url: url,
+                statusCode: statusCode,
+                requestBody: requestBody,
+                responseBody: responseBody,
+                error: error,
+                metadata: metadata
+            )
+        )
     }
 }
 
@@ -219,7 +284,7 @@ private struct LoupeLogNotificationPayload: Sendable {
 }
 
 private struct LoupeViewMetadataNotificationPayload: @unchecked Sendable {
-    var view: UIView?
+    var view: LoupePlatformView?
     var testID: String?
     var metadata: [String: LoupeMetadataValue]
 
@@ -230,15 +295,48 @@ private struct LoupeViewMetadataNotificationPayload: @unchecked Sendable {
             return nil
         }
 
-        self.view = (notification.object as? UIView) ?? (userInfo["view"] as? UIView)
+        self.view = (notification.object as? LoupePlatformView) ?? (userInfo["view"] as? LoupePlatformView)
         self.testID = nonEmpty(userInfo["testID"] as? String ?? userInfo["id"] as? String)
         self.metadata = metadata
+    }
+}
+
+private struct LoupeNetworkNotificationPayload: Sendable {
+    var event: LoupeNetworkEvent
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let url = nonEmpty(userInfo["url"] as? String) else {
+            return nil
+        }
+
+        let statusCode: Int?
+        if let value = userInfo["statusCode"] as? Int {
+            statusCode = value
+        } else if let value = userInfo["status"] as? Int {
+            statusCode = value
+        } else if let value = userInfo["statusCode"] as? NSNumber {
+            statusCode = value.intValue
+        } else {
+            statusCode = nil
+        }
+
+        event = LoupeNetworkEvent(
+            method: nonEmpty(userInfo["method"] as? String),
+            url: url,
+            statusCode: statusCode,
+            requestBody: userInfo["requestBody"] as? String,
+            responseBody: userInfo["responseBody"] as? String,
+            error: userInfo["error"] as? String,
+            metadata: metadataPayload(from: userInfo)
+        )
     }
 }
 
 public extension Notification.Name {
     static let loupeLog = Notification.Name("dev.loupe.log")
     static let loupeViewMetadata = Notification.Name("dev.loupe.viewMetadata")
+    static let loupeNetwork = Notification.Name("dev.loupe.network")
 }
 
 #endif

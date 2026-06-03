@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LoupePoint: Codable, Equatable {
+public struct LoupePoint: Codable, Equatable, Sendable {
     public var x: Double
     public var y: Double
 
@@ -16,7 +16,7 @@ public struct LoupePoint: Codable, Equatable {
     }
 }
 
-public struct LoupeSize: Codable, Equatable {
+public struct LoupeSize: Codable, Equatable, Sendable {
     public var width: Double
     public var height: Double
 
@@ -32,7 +32,7 @@ public struct LoupeSize: Codable, Equatable {
     }
 }
 
-public struct LoupeRect: Codable, Equatable {
+public struct LoupeRect: Codable, Equatable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -47,6 +47,7 @@ public struct LoupeRect: Codable, Equatable {
 
     public var maxX: Double { x + width }
     public var maxY: Double { y + height }
+    public var center: LoupePoint { LoupePoint(x: x + width / 2, y: y + height / 2) }
     public var isEmpty: Bool { width <= 0 || height <= 0 }
 
     public func encode(to encoder: Encoder) throws {
@@ -78,7 +79,7 @@ public struct LoupeRect: Codable, Equatable {
     }
 }
 
-public struct LoupeInsets: Codable, Equatable {
+public struct LoupeInsets: Codable, Equatable, Sendable {
     public var top: Double
     public var left: Double
     public var bottom: Double
@@ -100,7 +101,7 @@ public struct LoupeInsets: Codable, Equatable {
     }
 }
 
-public struct LoupeColor: Codable, Equatable {
+public struct LoupeColor: Codable, Equatable, Sendable {
     public var red: Double
     public var green: Double
     public var blue: Double

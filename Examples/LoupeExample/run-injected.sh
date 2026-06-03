@@ -3,13 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PORT="${LOUPE_PORT:-}"
+LAUNCH_TIMEOUT="${LOUPE_LAUNCH_TIMEOUT:-30}"
 
 cd "$ROOT_DIR"
 
 booted_udid() {
   xcrun simctl list devices booted --json | ruby -rjson -e '
     devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
-    booted = devices.find { |device| device["state"] == "Booted" }
+    booted = devices.find { |device| device["state"] == "Booted" && device["name"].include?("iPhone") }
     puts booted && booted["udid"]
   '
 }
@@ -55,6 +56,7 @@ LAUNCH_ARGUMENTS=(
   --device "$DEVICE"
   --bundle-id dev.loupe.example
   --inject
+  --timeout "$LAUNCH_TIMEOUT"
 )
 if [[ -n "$PORT" ]]; then
   LAUNCH_ARGUMENTS+=(--env "LOUPE_PORT=$PORT")
@@ -74,9 +76,30 @@ echo
 
 SNAPSHOT_PATH="/tmp/loupe-example-snapshot.json"
 LOGS_PATH="/tmp/loupe-example-logs.json"
+NETWORK_PATH="/tmp/loupe-example-network.json"
+FLAG_PATH="/tmp/loupe-example-flag.json"
+FLAG_SET_PATH="/tmp/loupe-example-flag-set.json"
+KEYCHAIN_PATH="/tmp/loupe-example-keychain.json"
+HIT_TEST_PATH="/tmp/loupe-example-hit-test.json"
+RESPONDER_PATH="/tmp/loupe-example-responder-chain.json"
+ENV_PATH="/tmp/loupe-example-env.json"
+ENV_READ_PATH="/tmp/loupe-example-env-read.json"
+PERF_PATH="/tmp/loupe-example-perf.json"
+PERF_TRACE="/tmp/loupe-example-perf-trace"
 INSPECT_PATH="/tmp/loupe-example-inspect.json"
+rm -rf "$PERF_TRACE"
 curl -sS "$HOST/snapshot" > "$SNAPSHOT_PATH"
-.build/debug/loupe logs --host "$HOST" --output "$LOGS_PATH" >/dev/null
+.build/debug/loupe debug console --host "$HOST" --output "$LOGS_PATH" >/dev/null
+.build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
+.build/debug/loupe state flags get new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
+.build/debug/loupe state flags set new-nav --bool false --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
+.build/debug/loupe state keychain list --host "$HOST" --output "$KEYCHAIN_PATH" >/dev/null
+.build/debug/loupe ui hit-test --host "$HOST" --point 201,437 --output "$HIT_TEST_PATH" >/dev/null
+.build/debug/loupe ui responder-chain --host "$HOST" --test-id example.customerList --output "$RESPONDER_PATH" >/dev/null
+.build/debug/loupe env appearance --host "$HOST" --output "$ENV_READ_PATH" >/dev/null
+.build/debug/loupe env appearance dark --host "$HOST" --output "$ENV_PATH" >/dev/null
+.build/debug/loupe env appearance system --host "$HOST" >/dev/null
+.build/debug/loupe perf scroll --host "$HOST" --udid "$DEVICE" --from 201,740 --to 201,320 --trace-dir "$PERF_TRACE" --output "$PERF_PATH" >/dev/null
 
 .build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList
 .build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id example.customerList > "$INSPECT_PATH"
@@ -92,8 +115,33 @@ ruby -rjson -e '
   background_origin = background_log.dig("metadata", "origin", "value")
   abort "expected background log screen=customers, got #{background_screen.inspect}" unless background_screen == "customers"
   abort "expected background log origin=background, got #{background_origin.inspect}" unless background_origin == "background"
+  network = JSON.parse(File.read(ARGV.fetch(2)))
+  event = network.find { |entry| entry["url"] == "https://api.example.test/customers" }
+  abort "missing customers network event" unless event
+  abort "expected network status 200" unless event["statusCode"] == 200
+  flag = JSON.parse(File.read(ARGV.fetch(3)))
+  abort "expected new-nav=false" unless flag.dig("value", "value") == false
+  flag_set = JSON.parse(File.read(ARGV.fetch(8)))
+  abort "expected typed new-nav=false set" unless flag_set.dig("after", "value") == false
+  keychain = JSON.parse(File.read(ARGV.fetch(4)))
+  item = keychain.find { |entry| entry["service"] == "dev.loupe.example" && entry["account"] == "fixture" }
+  abort "missing keychain fixture metadata" unless item
+  hit = JSON.parse(File.read(ARGV.fetch(5)))
+  abort "expected hit-test responder chain" unless hit.fetch("responderChain").any?
+  responder = JSON.parse(File.read(ARGV.fetch(6)))
+  abort "expected UITableView in responder chain" unless responder.fetch("responderChain").any? { |entry| entry["typeName"] == "UITableView" }
+  env = JSON.parse(File.read(ARGV.fetch(7)))
+  abort "expected dark appearance, got #{env["appearance"].inspect}" unless env["appearance"] == "dark"
+  env_read = JSON.parse(File.read(ARGV.fetch(9)))
+  abort "expected env read appearance key" unless env_read.key?("appearance")
+  perf = JSON.parse(File.read(ARGV.fetch(10)))
+  abort "expected perf actionElapsed" unless perf["actionElapsed"].is_a?(Numeric) && perf["actionElapsed"] >= 0
+  abort "expected perf traceDirectory" unless perf["traceDirectory"] == ARGV.fetch(11)
+  abort "expected perf before offset" unless perf["beforeOffset"].is_a?(Hash)
+  abort "expected perf after offset" unless perf["afterOffset"].is_a?(Hash)
+  abort "expected perf delta" unless perf["delta"].is_a?(Hash)
   inspection = JSON.parse(File.read(ARGV.fetch(1)))
   custom = inspection.fetch("node").fetch("custom")
   abort "expected inspect screen=customers" unless custom.dig("screen", "value") == "customers"
   abort "expected inspect fixture=true" unless custom.dig("fixture", "value") == true
-' "$LOGS_PATH" "$INSPECT_PATH"
+' "$LOGS_PATH" "$INSPECT_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$FLAG_SET_PATH" "$ENV_READ_PATH" "$PERF_PATH" "$PERF_TRACE"

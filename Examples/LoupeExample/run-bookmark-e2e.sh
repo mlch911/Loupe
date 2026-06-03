@@ -33,7 +33,7 @@ booted_udid() {
   run_with_timeout "$(simctl_list_timeout)" xcrun simctl list devices booted --json >"$list_path"
   ruby -rjson -e '
     devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
-    booted = devices.find { |device| device["state"] == "Booted" }
+    booted = devices.find { |device| device["state"] == "Booted" && device["name"].include?("iPhone") }
     puts booted && booted["udid"]
   ' <"$list_path"
 }
@@ -140,41 +140,41 @@ TRACE_DIR="/tmp/loupe-bookmark-trace"
 rm -rf "$TRACE_DIR"
 
 fetch_snapshot() {
-  .build/debug/loupe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
+  .build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
 }
 
 assert_query() {
   local test_id="$1"
   local output_path="$2"
-  .build/debug/loupe query "$SNAPSHOT_PATH" --test-id "$test_id" > "$output_path"
+  .build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id "$test_id" > "$output_path"
   grep -q '"ref"' "$output_path"
 }
 
 query_ref() {
   local test_id="$1"
-  .build/debug/loupe query "$SNAPSHOT_PATH" --test-id "$test_id" --max-results 1 |
+  .build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id "$test_id" --max-results 1 |
     ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
 }
 
 echo "case: bookmark list observation"
-.build/debug/loupe runtime --host "$HOST" --udid "$DEVICE" --timeout 5 >/tmp/loupe-bookmark-runtime.json
-.build/debug/loupe runtimes --json >/tmp/loupe-bookmark-runtimes.json
+.build/debug/loupe runtime info --host "$HOST" --udid "$DEVICE" --timeout 5 >/tmp/loupe-bookmark-runtime.json
+.build/debug/loupe runtime list --json >/tmp/loupe-bookmark-runtimes.json
 grep -q "dev.loupe.example" /tmp/loupe-bookmark-runtimes.json
-.build/debug/loupe set --host "$HOST" --udid "$DEVICE" --list >/tmp/loupe-bookmark-mutations.json
+.build/debug/loupe ui set --host "$HOST" --udid "$DEVICE" --list >/tmp/loupe-bookmark-mutations.json
 grep -q '"property" : "backgroundcolor"' /tmp/loupe-bookmark-mutations.json
 fetch_snapshot
 assert_query bookmark.tabs /tmp/loupe-bookmark-tabs-query.json
 assert_query bookmark.tabbar /tmp/loupe-bookmark-tabbar-query.json
 assert_query bookmark.list /tmp/loupe-bookmark-list-query.json
 assert_query bookmark.item.swift /tmp/loupe-bookmark-first-query.json
-.build/debug/loupe tree "$SNAPSHOT_PATH" --test-id bookmark.tabs --depth 2 >/tmp/loupe-bookmark-view-tree.txt
+.build/debug/loupe observe tree "$SNAPSHOT_PATH" --test-id bookmark.tabs --depth 2 >/tmp/loupe-bookmark-view-tree.txt
 grep -q "bookmark.tabs" /tmp/loupe-bookmark-view-tree.txt
-.build/debug/loupe tree "$SNAPSHOT_PATH" --accessibility --test-id bookmark.tabbar --depth 1 >/tmp/loupe-bookmark-accessibility-tree.txt
+.build/debug/loupe observe tree "$SNAPSHOT_PATH" --accessibility --test-id bookmark.tabbar --depth 1 >/tmp/loupe-bookmark-accessibility-tree.txt
 grep -q "bookmark.tabbar" /tmp/loupe-bookmark-accessibility-tree.txt
-.build/debug/loupe compact "$SNAPSHOT_PATH" >/tmp/loupe-bookmark-compact.json
-.build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id bookmark.tabbar > "$INSPECT_PATH"
+.build/debug/loupe observe compact "$SNAPSHOT_PATH" >/tmp/loupe-bookmark-compact.json
+.build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id bookmark.tabbar > "$INSPECT_PATH"
 grep -q '"className" : "UITabBar"' "$INSPECT_PATH"
-.build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id bookmark.list > "$INSPECT_PATH"
+.build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id bookmark.list > "$INSPECT_PATH"
 grep -q '"className" : "UITableView"' "$INSPECT_PATH"
 
 echo "case: bookmark text tap is rejected"
@@ -235,34 +235,37 @@ BACK_REF="$(query_ref bookmark.detail.back)"
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.add --timeout 5 >/tmp/loupe-bookmark-wait-add.json
 
 echo "case: bookmark creation form by selector tap and type"
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.add --expect-visible bookmark.editor
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.add --expect-visible bookmark.editor
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.editor --timeout 5 >/tmp/loupe-bookmark-wait-editor.json
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.editor.title
-CREATED_TITLE="20260519"
-.build/debug/loupe type "$CREATED_TITLE" --udid "$DEVICE"
+.build/debug/loupe act wait visible --host "$HOST" --test-id bookmark.editor.title --timeout 5 >/tmp/loupe-bookmark-wait-editor-title.json
 fetch_snapshot
-.build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id bookmark.editor.title > "$INSPECT_PATH"
+sleep 1
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$(query_ref bookmark.editor.title)"
+sleep 1
+CREATED_TITLE="20260519"
+.build/debug/loupe act type "$CREATED_TITLE" --udid "$DEVICE"
+fetch_snapshot
+.build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id bookmark.editor.title > "$INSPECT_PATH"
 grep -q "\"text\" : \"$CREATED_TITLE\"" "$INSPECT_PATH"
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.editor.save
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.editor.save
 .build/debug/loupe wait-for-gone --host "$HOST" --test-id bookmark.editor --timeout 5 >/tmp/loupe-bookmark-wait-editor-gone.json
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.item.created --timeout 5 >/tmp/loupe-bookmark-wait-created.json
 fetch_snapshot
 assert_query bookmark.item.created /tmp/loupe-bookmark-created-query.json
 
 echo "case: bookmark favorites tab and detail"
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.tab.favorites
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.tab.favorites
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.favorites --timeout 5 >/tmp/loupe-bookmark-wait-favorites.json
 fetch_snapshot
 assert_query bookmark.favorites /tmp/loupe-bookmark-favorites-query.json
 assert_query bookmark.item.swift /tmp/loupe-bookmark-favorite-first-query.json
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.item.swift
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --test-id bookmark.item.swift
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.detail --timeout 5 >/tmp/loupe-bookmark-wait-favorite-detail.json
 fetch_snapshot
-.build/debug/loupe inspect "$SNAPSHOT_PATH" --test-id bookmark.detail.favorite > "$INSPECT_PATH"
+.build/debug/loupe inspect node "$SNAPSHOT_PATH" --test-id bookmark.detail.favorite > "$INSPECT_PATH"
 grep -q '"isOn" : true' "$INSPECT_PATH"
-BACK_REF="$(query_ref bookmark.detail.back)"
-.build/debug/loupe tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$BACK_REF"
-.build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.favorites --timeout 5 >/tmp/loupe-bookmark-wait-favorites-return.json
+.build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --x 32 --y 78 --width 402 --height 874 --trace-dir "$TRACE_DIR-favorite-back"
+.build/debug/loupe act wait visible --host "$HOST" --test-id bookmark.favorites --timeout 8 >/tmp/loupe-bookmark-wait-favorites-return.json
 
 echo "case: bookmark search tab"
 .build/debug/loupe wait-for-visible --host "$HOST" --test-id bookmark.tabbar --timeout 5 >/tmp/loupe-bookmark-wait-tabbar-before-search.json

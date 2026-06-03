@@ -33,7 +33,7 @@ booted_udid() {
   run_with_timeout "$(simctl_list_timeout)" xcrun simctl list devices booted --json >"$list_path"
   ruby -rjson -e '
     devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
-    booted = devices.find { |device| device["state"] == "Booted" }
+    booted = devices.find { |device| device["state"] == "Booted" && device["name"].include?("iPhone") }
     puts booted && booted["udid"]
   ' <"$list_path"
 }
@@ -121,7 +121,7 @@ LAUNCH_ARGUMENTS=(
 if [[ -n "$PORT" ]]; then
   LAUNCH_ARGUMENTS+=(--env "LOUPE_PORT=$PORT")
 fi
-LAUNCH_OUTPUT="$(.build/debug/loupe launch "${LAUNCH_ARGUMENTS[@]}")"
+LAUNCH_OUTPUT="$(.build/debug/loupe runtime launch "${LAUNCH_ARGUMENTS[@]}")"
 HOST="$(awk '/^loupe host: / { print $3 }' <<<"$LAUNCH_OUTPUT" | tail -1)"
 if [[ -z "$HOST" ]]; then
   echo "error: loupe launch did not report a runtime host" >&2
@@ -136,11 +136,11 @@ SCREENSHOT_PATH="/tmp/loupe-runtime-screen.png"
 RUNTIME_PATH="/tmp/loupe-runtime-state.json"
 
 fetch_snapshot() {
-  .build/debug/loupe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
+  .build/debug/loupe observe fetch "$HOST/snapshot" --timeout 10 --output "$SNAPSHOT_PATH"
 }
 
 curl -sS "$HOST/health" | grep -q LoupeKit
-.build/debug/loupe runtime --host "$HOST" --udid "$DEVICE" > "$RUNTIME_PATH"
+.build/debug/loupe runtime info --host "$HOST" --udid "$DEVICE" > "$RUNTIME_PATH"
 grep -q '"simulatorUDID"' "$RUNTIME_PATH"
 fetch_snapshot
 grep -q '"uiKit"' "$SNAPSHOT_PATH"
@@ -151,7 +151,7 @@ read -r WIDTH HEIGHT < <(ruby -rjson -e '
   puts [size.fetch("width"), size.fetch("height")].join(" ")
 ' "$SNAPSHOT_PATH")
 
-.build/debug/loupe drag \
+.build/debug/loupe act drag \
   --udid "$DEVICE" \
   --from "$(ruby -e 'puts (ARGV.fetch(0).to_f / 2).round' "$WIDTH"),$(ruby -e 'puts (ARGV.fetch(0).to_f * 0.80).round' "$HEIGHT")" \
   --to "$(ruby -e 'puts (ARGV.fetch(0).to_f / 2).round' "$WIDTH"),$(ruby -e 'puts (ARGV.fetch(0).to_f * 0.35).round' "$HEIGHT")" \
@@ -161,9 +161,9 @@ read -r WIDTH HEIGHT < <(ruby -rjson -e '
 sleep 1
 
 fetch_snapshot
-.build/debug/loupe query "$SNAPSHOT_PATH" --test-id example.customerList >/tmp/loupe-runtime-list-query.json
+.build/debug/loupe inspect query "$SNAPSHOT_PATH" --test-id example.customerList >/tmp/loupe-runtime-list-query.json
 
-.build/debug/loupe screenshot \
+.build/debug/loupe observe screenshot \
   --udid "$DEVICE" \
   --output "$SCREENSHOT_PATH"
 

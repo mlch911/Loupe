@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 import UIKit
 import WebKit
 
@@ -122,6 +123,19 @@ final class ViewController: UITableViewController {
                 ]
             ]
         )
+        NotificationCenter.default.post(
+            name: Notification.Name("dev.loupe.network"),
+            object: nil,
+            userInfo: [
+                "method": "GET",
+                "url": "https://api.example.test/customers",
+                "statusCode": 200,
+                "responseBody": #"{"items":[{"id":1,"name":"Customer 1"}]}"#,
+                "metadata": ["screen": "customers"]
+            ]
+        )
+        UserDefaults.standard.set(false, forKey: "new-nav")
+        upsertLoupeKeychainFixture()
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -1276,5 +1290,22 @@ extension FormViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         textField.resignFirstResponder()
         return true
+    }
+}
+
+private func upsertLoupeKeychainFixture() {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "dev.loupe.example",
+        kSecAttrAccount as String: "fixture",
+    ]
+    let attributes: [String: Any] = [
+        kSecValueData as String: Data("fixture-token".utf8),
+    ]
+    let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+        var item = query
+        item[kSecValueData as String] = Data("fixture-token".utf8)
+        SecItemAdd(item as CFDictionary, nil)
     }
 }

@@ -10,6 +10,22 @@ struct RuntimeFetchOptions {
     var outputURL: URL?
     var timeout: TimeInterval
 
+    init(
+        host: URL,
+        hostWasExplicit: Bool,
+        udid: String?,
+        bundleID: String?,
+        outputURL: URL?,
+        timeout: TimeInterval
+    ) {
+        self.host = host
+        self.hostWasExplicit = hostWasExplicit
+        self.udid = udid
+        self.bundleID = bundleID
+        self.outputURL = outputURL
+        self.timeout = timeout
+    }
+
     init(_ arguments: [String], usage: String) throws {
         host = URL(string: "http://127.0.0.1:8765")!
         hostWasExplicit = false

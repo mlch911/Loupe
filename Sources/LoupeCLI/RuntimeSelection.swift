@@ -71,7 +71,14 @@ extension LoupeCLI {
         if let udid = options.udid {
             try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
         }
-        let url = host.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        let normalizedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url: URL
+        if normalizedPath.contains("?"),
+           let queryURL = URL(string: normalizedPath, relativeTo: host)?.absoluteURL {
+            url = queryURL
+        } else {
+            url = host.appendingPathComponent(normalizedPath)
+        }
         let (data, response) = try await httpData(from: url, timeout: options.timeout, label: "runtime fetch")
         guard let httpResponse = response as? HTTPURLResponse else {
             throw CLIError("runtime fetch expected an HTTP response")

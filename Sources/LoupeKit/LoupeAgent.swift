@@ -2,50 +2,10 @@ import Foundation
 import LoupeCore
 
 #if canImport(UIKit)
-import ObjectiveC
 import UIKit
 #if canImport(WebKit)
 import WebKit
 #endif
-
-private nonisolated(unsafe) var loupeMetadataKey: UInt8 = 0
-
-public extension UIView {
-    var loupeMetadata: [String: LoupeMetadataValue] {
-        get {
-            objc_getAssociatedObject(self, &loupeMetadataKey) as? [String: LoupeMetadataValue] ?? [:]
-        }
-        set {
-            objc_setAssociatedObject(
-                self,
-                &loupeMetadataKey,
-                newValue,
-                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-            )
-        }
-    }
-
-    func testID(_ id: String) {
-        accessibilityIdentifier = id
-        loupeMetadata["id"] = .string(id)
-    }
-
-    func testProperty(_ key: String, _ value: String) {
-        loupeMetadata[key] = .string(value)
-    }
-
-    func testProperty(_ key: String, _ value: Bool) {
-        loupeMetadata[key] = .bool(value)
-    }
-
-    func testProperty(_ key: String, _ value: Int) {
-        loupeMetadata[key] = .int(value)
-    }
-
-    func testProperty(_ key: String, _ value: Double) {
-        loupeMetadata[key] = .double(value)
-    }
-}
 
 @MainActor
 public final class LoupeAgent {
@@ -157,6 +117,59 @@ public final class LoupeAgent {
         options: LoupeObservationOptions = LoupeObservationOptions()
     ) -> LoupeCompactObservation {
         LoupeObservationCompactor.compact(captureSnapshot(), options: options)
+    }
+
+    public func hitTest(point: LoupePoint) -> LoupeHitTestReport {
+        let capture = captureSnapshotWithViewRefs()
+        let cgPoint = CGPoint(x: point.x, y: point.y)
+
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows.reversed() {
+                let pointInWindow = window.convert(cgPoint, from: nil)
+                guard let view = window.hitTest(pointInWindow, with: nil) else {
+                    continue
+                }
+
+                let ref = capture.viewRefs[ObjectIdentifier(view)]
+                let node = ref.flatMap { capture.snapshot.nodes[$0] }
+                return LoupeHitTestReport(
+                    point: point,
+                    hitRef: ref,
+                    hitTestID: node?.testID,
+                    hitTypeName: node?.uiKit?.className ?? node?.typeName ?? typeName(of: view),
+                    responderChain: buildResponderChain(from: view, capture: capture)
+                )
+            }
+        }
+
+        return LoupeHitTestReport(point: point)
+    }
+
+    public func responderChain(selector: LoupeSelector) -> LoupeHitTestReport? {
+        let capture = captureSnapshotWithViewRefs()
+        guard let match = LoupeSnapshotQuery.find(
+            selector,
+            in: capture.snapshot,
+            options: LoupeQueryOptions(includeHidden: true, includeDisabled: true, maxResults: 1)
+        ).first else {
+            return nil
+        }
+
+        if let view = capture.viewsByRef[match.ref] {
+            let node = capture.snapshot.nodes[match.ref]
+            return LoupeHitTestReport(
+                point: match.frame?.center ?? LoupePoint(x: 0, y: 0),
+                hitRef: match.ref,
+                hitTestID: match.testID,
+                hitTypeName: node?.uiKit?.className ?? node?.typeName ?? typeName(of: view),
+                responderChain: buildResponderChain(from: view, capture: capture)
+            )
+        }
+
+        guard let frame = match.frame else {
+            return nil
+        }
+        return hitTest(point: frame.center)
     }
 
     public func mutate(_ request: LoupeMutationRequest) throws -> LoupeMutationResponse {
@@ -716,6 +729,33 @@ private struct CapturedSnapshot {
 }
 
 @MainActor
+private func buildResponderChain(from view: UIView, capture: CapturedSnapshot) -> [LoupeResponderEntry] {
+    var entries: [LoupeResponderEntry] = []
+    var responder: UIResponder? = view
+
+    while let current = responder {
+        if let view = current as? UIView {
+            let ref = capture.viewRefs[ObjectIdentifier(view)]
+            let node = ref.flatMap { capture.snapshot.nodes[$0] }
+            entries.append(
+                LoupeResponderEntry(
+                    typeName: typeName(of: view),
+                    ref: ref,
+                    testID: node?.testID ?? view.accessibilityIdentifier,
+                    frame: node?.frame ?? frameInScreen(for: view)
+                )
+            )
+        } else {
+            entries.append(LoupeResponderEntry(typeName: typeName(of: current)))
+        }
+
+        responder = current.next
+    }
+
+    return entries
+}
+
+@MainActor
 private func loupeSelector(from selector: LoupeMutationSelector) -> LoupeSelector {
     switch selector.kind {
     case .testID:
@@ -948,8 +988,10 @@ private func mutationPropertyValue(_ property: String, in node: LoupeNode) -> Lo
         return node.uiKit?.scrollView.map { .rect(mutationRect(from: $0.scrollIndicatorInsets)) }
     case "scrollenabled", "isscrollenabled", "scrollview.isscrollenabled":
         return node.uiKit?.scrollView.map { .bool($0.isScrollEnabled) }
+    #if !os(tvOS)
     case "pagingenabled", "ispagingenabled", "scrollview.ispagingenabled":
         return node.uiKit?.scrollView.map { .bool($0.isPagingEnabled) }
+    #endif
     case "bounces", "scrollview.bounces":
         return node.uiKit?.scrollView.map { .bool($0.bounces) }
     case "showshorizontalscrollindicator":
@@ -1027,13 +1069,13 @@ private func mutation(
 private var viewMutationDescriptors: [LoupeMutationDescriptor] {
     [
         mutation(["frame"]) { view, value in
-            view.frame = try frameInSuperview(try rectValue(value), for: view)
+            view.frame = frameInSuperview(try rectValue(value), for: view)
         },
         mutation(["bounds"]) { view, value in
             view.bounds = cgRect(try rectValue(value))
         },
         mutation(["center"]) { view, value in
-            view.center = try pointInSuperview(try pointValue(value), for: view)
+            view.center = pointInSuperview(try pointValue(value), for: view)
         },
         mutation(["alpha", "style.alpha", "uiKit.alpha"]) { view, value in
             view.alpha = CGFloat(try doubleValue(value))
@@ -1202,6 +1244,11 @@ private var textMutationDescriptors: [LoupeMutationDescriptor] {
 
 @MainActor
 private var controlMutationDescriptors: [LoupeMutationDescriptor] {
+    commonControlMutationDescriptors + unavailableOnTVControlMutationDescriptors
+}
+
+@MainActor
+private var commonControlMutationDescriptors: [LoupeMutationDescriptor] {
     [
         mutation(["enabled", "isEnabled", "control.enabled"]) { view, value in
             guard let control = view as? UIControl else {
@@ -1221,6 +1268,53 @@ private var controlMutationDescriptors: [LoupeMutationDescriptor] {
             }
             control.isHighlighted = try boolValue(value)
         },
+        mutation(["segmentedControl.selectedSegmentIndex", "uiKit.segmentedControl.selectedSegmentIndex"]) { view, value in
+            guard let control = view as? UISegmentedControl else {
+                throw unsupportedProperty("segmentedControl.selectedSegmentIndex", view: view)
+            }
+            let index = try intValue(value)
+            guard index == UISegmentedControl.noSegment || (index >= 0 && index < control.numberOfSegments) else {
+                throw LoupeMutationError(code: "invalid_value", message: "Segment index \(index) is outside available segments.")
+            }
+            control.selectedSegmentIndex = index
+            control.sendActions(for: .valueChanged)
+        },
+        mutation(["pageControl.currentPage", "uiKit.pageControl.currentPage"]) { view, value in
+            guard let control = view as? UIPageControl else {
+                throw unsupportedProperty("pageControl.currentPage", view: view)
+            }
+            control.currentPage = try intValue(value)
+            control.sendActions(for: .valueChanged)
+        },
+        mutation(["pageControl.numberOfPages"]) { view, value in
+            guard let control = view as? UIPageControl else {
+                throw unsupportedProperty("pageControl.numberOfPages", view: view)
+            }
+            control.numberOfPages = try intValue(value)
+        },
+        mutation(["progressView.progress", "progressView.value", "uiKit.progress.progress", "uiKit.progressView.value"]) { view, value in
+            guard let progressView = view as? UIProgressView else {
+                throw unsupportedProperty("progressView.progress", view: view)
+            }
+            progressView.progress = Float(try doubleValue(value))
+        },
+        mutation(["activityIndicator.animating", "activityIndicator.isAnimating"]) { view, value in
+            guard let activityIndicator = view as? UIActivityIndicatorView else {
+                throw unsupportedProperty("activityIndicator.animating", view: view)
+            }
+            if try boolValue(value) {
+                activityIndicator.startAnimating()
+            } else {
+                activityIndicator.stopAnimating()
+            }
+        }
+    ]
+}
+
+#if !os(tvOS)
+@MainActor
+private var unavailableOnTVControlMutationDescriptors: [LoupeMutationDescriptor] {
+    [
         mutation(["switch.isOn", "switchControl.isOn", "uiKit.switch.isOn", "uiKit.switchControl.isOn"]) { view, value in
             guard let control = view as? UISwitch else {
                 throw unsupportedProperty("switch.isOn", view: view)
@@ -1272,36 +1366,6 @@ private var controlMutationDescriptors: [LoupeMutationDescriptor] {
             }
             control.stepValue = try doubleValue(value)
         },
-        mutation(["segmentedControl.selectedSegmentIndex", "uiKit.segmentedControl.selectedSegmentIndex"]) { view, value in
-            guard let control = view as? UISegmentedControl else {
-                throw unsupportedProperty("segmentedControl.selectedSegmentIndex", view: view)
-            }
-            let index = try intValue(value)
-            guard index == UISegmentedControl.noSegment || (index >= 0 && index < control.numberOfSegments) else {
-                throw LoupeMutationError(code: "invalid_value", message: "Segment index \(index) is outside available segments.")
-            }
-            control.selectedSegmentIndex = index
-            control.sendActions(for: .valueChanged)
-        },
-        mutation(["pageControl.currentPage", "uiKit.pageControl.currentPage"]) { view, value in
-            guard let control = view as? UIPageControl else {
-                throw unsupportedProperty("pageControl.currentPage", view: view)
-            }
-            control.currentPage = try intValue(value)
-            control.sendActions(for: .valueChanged)
-        },
-        mutation(["pageControl.numberOfPages"]) { view, value in
-            guard let control = view as? UIPageControl else {
-                throw unsupportedProperty("pageControl.numberOfPages", view: view)
-            }
-            control.numberOfPages = try intValue(value)
-        },
-        mutation(["progressView.progress", "progressView.value", "uiKit.progress.progress", "uiKit.progressView.value"]) { view, value in
-            guard let progressView = view as? UIProgressView else {
-                throw unsupportedProperty("progressView.progress", view: view)
-            }
-            progressView.progress = Float(try doubleValue(value))
-        },
         mutation(["datePicker.date"]) { view, value in
             guard let datePicker = view as? UIDatePicker else {
                 throw unsupportedProperty("datePicker.date", view: view)
@@ -1316,16 +1380,6 @@ private var controlMutationDescriptors: [LoupeMutationDescriptor] {
             datePicker.countDownDuration = try doubleValue(value)
             datePicker.sendActions(for: .valueChanged)
         },
-        mutation(["activityIndicator.animating", "activityIndicator.isAnimating"]) { view, value in
-            guard let activityIndicator = view as? UIActivityIndicatorView else {
-                throw unsupportedProperty("activityIndicator.animating", view: view)
-            }
-            if try boolValue(value) {
-                activityIndicator.startAnimating()
-            } else {
-                activityIndicator.stopAnimating()
-            }
-        },
         mutation(["pickerView.selectedRow"]) { view, value in
             guard let pickerView = view as? UIPickerView else {
                 throw unsupportedProperty("pickerView.selectedRow", view: view)
@@ -1335,9 +1389,18 @@ private var controlMutationDescriptors: [LoupeMutationDescriptor] {
         }
     ]
 }
+#else
+@MainActor
+private var unavailableOnTVControlMutationDescriptors: [LoupeMutationDescriptor] { [] }
+#endif
 
 @MainActor
 private var scrollMutationDescriptors: [LoupeMutationDescriptor] {
+    commonScrollMutationDescriptors + unavailableOnTVScrollMutationDescriptors
+}
+
+@MainActor
+private var commonScrollMutationDescriptors: [LoupeMutationDescriptor] {
     [
         mutation(["contentOffset", "scrollView.contentOffset"]) { view, value in
             guard let scrollView = view as? UIScrollView else {
@@ -1371,12 +1434,6 @@ private var scrollMutationDescriptors: [LoupeMutationDescriptor] {
             }
             scrollView.isScrollEnabled = try boolValue(value)
         },
-        mutation(["pagingEnabled", "isPagingEnabled", "scrollView.isPagingEnabled"]) { view, value in
-            guard let scrollView = view as? UIScrollView else {
-                throw unsupportedProperty("pagingEnabled", view: view)
-            }
-            scrollView.isPagingEnabled = try boolValue(value)
-        },
         mutation(["bounces", "scrollView.bounces"]) { view, value in
             guard let scrollView = view as? UIScrollView else {
                 throw unsupportedProperty("bounces", view: view)
@@ -1397,6 +1454,23 @@ private var scrollMutationDescriptors: [LoupeMutationDescriptor] {
         }
     ]
 }
+
+#if !os(tvOS)
+@MainActor
+private var unavailableOnTVScrollMutationDescriptors: [LoupeMutationDescriptor] {
+    [
+        mutation(["pagingEnabled", "isPagingEnabled", "scrollView.isPagingEnabled"]) { view, value in
+            guard let scrollView = view as? UIScrollView else {
+                throw unsupportedProperty("pagingEnabled", view: view)
+            }
+            scrollView.isPagingEnabled = try boolValue(value)
+        }
+    ]
+}
+#else
+@MainActor
+private var unavailableOnTVScrollMutationDescriptors: [LoupeMutationDescriptor] { [] }
+#endif
 
 @MainActor
 private var stackMutationDescriptors: [LoupeMutationDescriptor] {
@@ -1743,13 +1817,6 @@ private func stackDistribution(_ rawValue: String) throws -> UIStackView.Distrib
     }
 }
 
-func makeLoupeJSONEncoder() -> JSONEncoder {
-    let encoder = JSONEncoder()
-    encoder.dateEncodingStrategy = .iso8601
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    return encoder
-}
-
 @MainActor
 private func frameInScreen(for view: UIView) -> LoupeRect? {
     guard view.window != nil else { return nil }
@@ -1770,19 +1837,27 @@ private func role(for view: UIView) -> String? {
     if view is UIButton { return "button" }
     if view is UITextField { return "textField" }
     if view is UITextView { return "textView" }
+    #if !os(tvOS)
     if view is UISwitch { return "switch" }
     if view is UISlider { return "slider" }
     if view is UIStepper { return "stepper" }
+    #endif
     if view is UISegmentedControl { return "segmentedControl" }
+    #if !os(tvOS)
     if view is UIDatePicker { return "datePicker" }
+    #endif
     if view is UIPageControl { return "pageControl" }
     if view is UIProgressView { return "progress" }
     if view is UIActivityIndicatorView { return "activityIndicator" }
     if view is UICollectionView { return "collectionView" }
     if view is UITableView { return "tableView" }
+    #if !os(tvOS)
     if view is UIPickerView { return "pickerView" }
+    #endif
     if view is UITabBar { return "tabBar" }
+    #if !os(tvOS)
     if view is UIToolbar { return "toolbar" }
+    #endif
     if view is UINavigationBar { return "navigationBar" }
     #if canImport(WebKit)
     if view is WKWebView { return "webView" }
@@ -1895,12 +1970,21 @@ private func style(for view: UIView) -> LoupeStyle {
 
 @MainActor
 private func capturedTintColor(for view: UIView) -> UIColor? {
-    guard view is UIControl
+    #if os(tvOS)
+    let usesOwnTint = view is UIControl
+        || view is UIImageView
+        || view is UINavigationBar
+        || view is UITabBar
+        || view.tintColorDiffersFromSuperview
+    #else
+    let usesOwnTint = view is UIControl
         || view is UIImageView
         || view is UINavigationBar
         || view is UIToolbar
         || view is UITabBar
-        || view.tintColorDiffersFromSuperview else {
+        || view.tintColorDiffersFromSuperview
+    #endif
+    guard usesOwnTint else {
         return nil
     }
     return view.tintColor
@@ -2048,6 +2132,7 @@ private func mergedMetadata(
     return result
 }
 
+@MainActor
 private func accessibilityIdentifier(for element: NSObject) -> String? {
     if let identifier = (element as? UIAccessibilityIdentification)?.accessibilityIdentifier {
         return nonEmpty(identifier)
@@ -2430,15 +2515,40 @@ private func scrollViewProperties(for view: UIView) -> LoupeUIScrollViewProperti
             bottom: finiteDouble(scrollView.adjustedContentInset.bottom.doubleValue) ?? 0,
             right: finiteDouble(scrollView.adjustedContentInset.right.doubleValue) ?? 0
         ),
-        scrollIndicatorInsets: loupeInsets(from: scrollView.scrollIndicatorInsets),
+        scrollIndicatorInsets: scrollIndicatorInsets(for: scrollView),
         isScrollEnabled: scrollView.isScrollEnabled,
-        isPagingEnabled: scrollView.isPagingEnabled,
+        isPagingEnabled: scrollViewIsPagingEnabled(scrollView),
         bounces: scrollView.bounces,
         alwaysBounceVertical: scrollView.alwaysBounceVertical,
         alwaysBounceHorizontal: scrollView.alwaysBounceHorizontal,
         showsVerticalScrollIndicator: scrollView.showsVerticalScrollIndicator,
         showsHorizontalScrollIndicator: scrollView.showsHorizontalScrollIndicator
     )
+}
+
+@MainActor
+private func scrollViewIsPagingEnabled(_ scrollView: UIScrollView) -> Bool {
+    #if os(tvOS)
+    return false
+    #else
+    return scrollView.isPagingEnabled
+    #endif
+}
+
+@MainActor
+private func scrollIndicatorInsets(for scrollView: UIScrollView) -> LoupeInsets {
+    #if os(tvOS)
+    return LoupeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    #else
+    let verticalInsets = scrollView.verticalScrollIndicatorInsets
+    let horizontalInsets = scrollView.horizontalScrollIndicatorInsets
+    return LoupeInsets(
+        top: finiteDouble(verticalInsets.top.doubleValue) ?? 0,
+        left: finiteDouble(horizontalInsets.left.doubleValue) ?? 0,
+        bottom: finiteDouble(verticalInsets.bottom.doubleValue) ?? 0,
+        right: finiteDouble(horizontalInsets.right.doubleValue) ?? 0
+    )
+    #endif
 }
 
 private func loupeInsets(from insets: UIEdgeInsets) -> LoupeInsets {
@@ -2450,6 +2560,7 @@ private func loupeInsets(from insets: UIEdgeInsets) -> LoupeInsets {
     )
 }
 
+#if !os(tvOS)
 @MainActor
 private func switchProperties(for view: UIView) -> LoupeUISwitchProperties? {
     guard let switchView = view as? UISwitch else {
@@ -2457,7 +2568,12 @@ private func switchProperties(for view: UIView) -> LoupeUISwitchProperties? {
     }
     return LoupeUISwitchProperties(isOn: switchView.isOn)
 }
+#else
+@MainActor
+private func switchProperties(for view: UIView) -> LoupeUISwitchProperties? { nil }
+#endif
 
+#if !os(tvOS)
 @MainActor
 private func sliderProperties(for view: UIView) -> LoupeUISliderProperties? {
     guard let slider = view as? UISlider else {
@@ -2469,7 +2585,12 @@ private func sliderProperties(for view: UIView) -> LoupeUISliderProperties? {
         maximumValue: finiteDouble(Double(slider.maximumValue))
     )
 }
+#else
+@MainActor
+private func sliderProperties(for view: UIView) -> LoupeUISliderProperties? { nil }
+#endif
 
+#if !os(tvOS)
 @MainActor
 private func stepperProperties(for view: UIView) -> LoupeUIStepperProperties? {
     guard let stepper = view as? UIStepper else {
@@ -2482,6 +2603,10 @@ private func stepperProperties(for view: UIView) -> LoupeUIStepperProperties? {
         stepValue: finiteDouble(stepper.stepValue)
     )
 }
+#else
+@MainActor
+private func stepperProperties(for view: UIView) -> LoupeUIStepperProperties? { nil }
+#endif
 
 @MainActor
 private func segmentedControlProperties(for view: UIView) -> LoupeUISegmentedControlProperties? {
@@ -2494,6 +2619,7 @@ private func segmentedControlProperties(for view: UIView) -> LoupeUISegmentedCon
     )
 }
 
+#if !os(tvOS)
 @MainActor
 private func datePickerProperties(for view: UIView) -> LoupeUIDatePickerProperties? {
     guard let datePicker = view as? UIDatePicker else {
@@ -2506,6 +2632,10 @@ private func datePickerProperties(for view: UIView) -> LoupeUIDatePickerProperti
         maximumDate: datePicker.maximumDate
     )
 }
+#else
+@MainActor
+private func datePickerProperties(for view: UIView) -> LoupeUIDatePickerProperties? { nil }
+#endif
 
 @MainActor
 private func pageControlProperties(for view: UIView) -> LoupeUIPageControlProperties? {
@@ -2545,6 +2675,7 @@ private func imageViewProperties(for view: UIView) -> LoupeUIImageViewProperties
     return LoupeUIImageViewProperties(imageSize: imageSize(for: view))
 }
 
+#if !os(tvOS)
 @MainActor
 private func pickerViewProperties(for view: UIView) -> LoupeUIPickerViewProperties? {
     guard let pickerView = view as? UIPickerView else {
@@ -2555,6 +2686,10 @@ private func pickerViewProperties(for view: UIView) -> LoupeUIPickerViewProperti
         selectedRows: pickerSelectedRows(for: view)
     )
 }
+#else
+@MainActor
+private func pickerViewProperties(for view: UIView) -> LoupeUIPickerViewProperties? { nil }
+#endif
 
 @MainActor
 private func tabBarProperties(for view: UIView) -> LoupeUITabBarProperties? {
@@ -2978,6 +3113,7 @@ private func imageSize(for view: UIView) -> LoupeSize? {
     )
 }
 
+#if !os(tvOS)
 @MainActor
 private func pickerSelectedRows(for view: UIView) -> [Int] {
     guard let pickerView = view as? UIPickerView else {
@@ -2985,6 +3121,7 @@ private func pickerSelectedRows(for view: UIView) -> [Int] {
     }
     return (0..<pickerView.numberOfComponents).map { pickerView.selectedRow(inComponent: $0) }
 }
+#endif
 
 @MainActor
 private func tabBarItemTitles(for view: UIView) -> [String] {
@@ -3012,6 +3149,7 @@ private func webViewTitle(for view: UIView) -> String? {
     #endif
 }
 
+#if !os(tvOS)
 private func datePickerModeName(_ mode: UIDatePicker.Mode) -> String {
     switch mode {
     case .time: return "time"
@@ -3022,6 +3160,7 @@ private func datePickerModeName(_ mode: UIDatePicker.Mode) -> String {
     @unknown default: return "unknown"
     }
 }
+#endif
 
 private func activityIndicatorStyleName(_ style: UIActivityIndicatorView.Style) -> String {
     switch style {
@@ -3029,7 +3168,9 @@ private func activityIndicatorStyleName(_ style: UIActivityIndicatorView.Style) 
     case .large: return "large"
     case .white: return "white"
     case .whiteLarge: return "whiteLarge"
+    #if !os(tvOS)
     case .gray: return "gray"
+    #endif
     @unknown default: return "unknown"
     }
 }

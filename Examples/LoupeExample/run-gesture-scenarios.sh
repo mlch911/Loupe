@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 booted_udid() {
   xcrun simctl list devices booted --json | ruby -rjson -e '
     devices = JSON.parse(STDIN.read).fetch("devices").values.flatten
-    booted = devices.find { |device| device["state"] == "Booted" }
+    booted = devices.find { |device| device["state"] == "Booted" && device["name"].include?("iPhone") }
     puts booted && booted["udid"]
   '
 }

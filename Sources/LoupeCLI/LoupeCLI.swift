@@ -26,8 +26,13 @@ struct LoupeCLI {
 
         let command = arguments.removeFirst()
 
-        if arguments.contains("--help") || arguments.contains("-h") {
-            printCommandHelp(command)
+        if command == "help" {
+            printCommandHelp(arguments)
+            return
+        }
+
+        if command != "--help", command != "-h", arguments.contains("--help") || arguments.contains("-h") {
+            printCommandHelp(helpPath(command: command, arguments: arguments))
             return
         }
 
@@ -52,6 +57,24 @@ struct LoupeCLI {
             try diff(arguments)
         case "doctor":
             try doctor(arguments)
+        case "target":
+            try await target(arguments)
+        case "debug":
+            try await debug(arguments)
+        case "state":
+            try await state(arguments)
+        case "env":
+            try await env(arguments)
+        case "perf":
+            try await perf(arguments)
+        case "observe":
+            try await observe(arguments)
+        case "act":
+            try await act(arguments)
+        case "ui":
+            try await ui(arguments)
+        case "trace":
+            try await trace(arguments)
         case "explore-routes":
             try await exploreRoutes(arguments)
         case "fetch":
@@ -69,11 +92,11 @@ struct LoupeCLI {
         case "injector-path":
             try injectorPath(arguments)
         case "inspect":
-            try inspect(arguments)
+            try await inspectGroup(arguments)
         case "reflect":
             try reflect(arguments)
         case "runtime":
-            try await runtimeFetch(arguments, path: "/runtime", usage: "loupe runtime [--host <url>] [--udid <sim>] [--output <path>]")
+            try await runtimeGroup(arguments)
         case "mutations":
             try await mutations(arguments)
         case "paint-stack":
@@ -118,18 +141,14 @@ struct LoupeCLI {
             try await waitFor(arguments, mode: .gone)
         case "wait-for-value":
             try await waitFor(arguments, mode: .value)
-        case "help", "--help", "-h":
-            if let command = arguments.first {
-                printCommandHelp(command)
-            } else {
-                printHelp()
-            }
+        case "--help", "-h":
+            printHelp()
         default:
             throw CLIError("Unknown command: \(command)")
         }
     }
 
-    private static func compact(_ arguments: [String]) throws {
+    static func compact(_ arguments: [String]) throws {
         guard arguments.count == 1 else {
             throw CLIError("Usage: loupe compact <snapshot.json>")
         }
@@ -149,7 +168,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func screenMap(_ arguments: [String]) async throws {
+    static func screenMap(_ arguments: [String]) async throws {
         let options = try ScreenMapOptions(arguments)
         let snapshot: LoupeSnapshot
         if let snapshotURL = options.snapshotURL {
@@ -182,7 +201,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func captureReport(_ arguments: [String]) async throws {
+    static func captureReport(_ arguments: [String]) async throws {
         let options = try CaptureReportOptions(arguments)
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
@@ -312,7 +331,7 @@ struct LoupeCLI {
             }
     }
 
-    private static func paintStack(_ arguments: [String]) async throws {
+    static func paintStack(_ arguments: [String]) async throws {
         let options = try PaintStackOptions(arguments)
         let snapshot: LoupeSnapshot
         if let snapshotURL = options.snapshotURL {
@@ -357,7 +376,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func query(_ arguments: [String]) async throws {
+    static func query(_ arguments: [String]) async throws {
         let options = try QueryOptions(arguments)
         let snapshot: LoupeSnapshot
         if let snapshotURL = options.snapshotURL {
@@ -408,7 +427,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func accessibility(_ arguments: [String]) throws {
+    static func accessibility(_ arguments: [String]) throws {
         let options = try AccessibilityOptions(arguments)
         let data = try Data(contentsOf: options.snapshotURL)
         let decoder = JSONDecoder()
@@ -423,7 +442,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func inspect(_ arguments: [String]) throws {
+    static func inspect(_ arguments: [String]) throws {
         let options = try InspectOptions(arguments)
         let data = try Data(contentsOf: options.snapshotURL)
         let decoder = JSONDecoder()
@@ -450,7 +469,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func subtree(_ arguments: [String]) throws {
+    static func subtree(_ arguments: [String]) throws {
         let options = try SubtreeOptions(arguments)
         let data = try Data(contentsOf: options.snapshotURL)
         let decoder = JSONDecoder()
@@ -473,7 +492,7 @@ struct LoupeCLI {
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
 
-    private static func tree(_ arguments: [String]) async throws {
+    static func tree(_ arguments: [String]) async throws {
         let options = try TreeOptions(arguments)
         let snapshot: LoupeSnapshot
         let accessibilityTree: LoupeAccessibilityTree?
@@ -524,7 +543,7 @@ struct LoupeCLI {
         print(output)
     }
 
-    private static func audit(_ arguments: [String]) throws {
+    static func audit(_ arguments: [String]) throws {
         let options = try AuditOptions(arguments)
         let data = try Data(contentsOf: options.snapshotURL)
         let decoder = JSONDecoder()
@@ -557,7 +576,7 @@ struct LoupeCLI {
         return LoupeLayoutAudit(snapshotID: audit.snapshotID, issues: issues)
     }
 
-    private static func diff(_ arguments: [String]) throws {
+    static func diff(_ arguments: [String]) throws {
         let options = try DiffOptions(arguments)
         let before = try decodeSnapshot(from: options.beforeURL)
         let after = try decodeSnapshot(from: options.afterURL)
@@ -574,7 +593,7 @@ struct LoupeCLI {
         print(renderSnapshotDiff(summary, limit: options.limit, changedOnly: options.changedOnly))
     }
 
-    private static func traceSummary(_ arguments: [String]) throws {
+    static func traceSummary(_ arguments: [String]) throws {
         let options = try TraceSummaryOptions(arguments)
         let summary = try makeTraceSummary(directory: options.directory)
 
@@ -590,7 +609,7 @@ struct LoupeCLI {
         print(renderTraceSummary(summary, limit: options.limit))
     }
 
-    private static func compareDesign(_ arguments: [String]) throws {
+    static func compareDesign(_ arguments: [String]) throws {
         let options = try CompareDesignOptions(arguments)
         let snapshot = try decodeSnapshot(from: options.snapshotURL)
         let decoder = JSONDecoder()
@@ -660,7 +679,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func cleanup(_ arguments: [String]) async throws {
+    static func cleanup(_ arguments: [String]) async throws {
         let options = try CleanupOptions(arguments)
         var report = CleanupReport()
 
@@ -738,7 +757,7 @@ struct LoupeCLI {
         FileManager.default.temporaryDirectory.appendingPathComponent("loupe-traces", isDirectory: true)
     }
 
-    private static func start(_ arguments: [String]) async throws {
+    static func start(_ arguments: [String]) async throws {
         var launchArguments: [String] = []
         var index = 0
         var hasInject = false
@@ -772,7 +791,7 @@ struct LoupeCLI {
         try await launch(launchArguments)
     }
 
-    private static func launch(_ arguments: [String]) async throws {
+    static func launch(_ arguments: [String]) async throws {
         let options = try LaunchOptions(arguments)
         var environment = options.environment
         var runtimeUDID: String?
@@ -863,7 +882,7 @@ struct LoupeCLI {
         return LoupeInjectorPathResolver().resolve()
     }
 
-    private static func fetch(_ arguments: [String]) async throws {
+    static func fetch(_ arguments: [String]) async throws {
         let options = try FetchOptions(arguments)
         let (data, response) = try await httpData(from: options.url, timeout: options.timeout, label: "fetch")
 
@@ -911,53 +930,37 @@ struct LoupeCLI {
 
     static func summaryHelp(version: String) -> String {
         """
-        OVERVIEW: A CLI that gives LLM agents runtime UI context from running iOS Simulator apps.
+        OVERVIEW: A CLI that gives agents runtime UI context through small primitives and skill-driven workflows.
 
         VERSION: \(version)
 
-        USAGE: loupe <subcommand>
+        USAGE: loupe <domain> <subcommand>
 
         OPTIONS:
           -h, --help              Show help information.
           --version               Show the current Loupe version.
 
-        RUNTIME SUBCOMMANDS:
-          start                   Launch and inject an iOS Simulator app.
-          runtimes                List known injected runtimes.
-          use                     Select the current runtime.
-          current                 Show the current runtime selection.
+        DOMAINS:
+          target                  Select a runtime target.
+          runtime                 Start, list, select, and query injected runtimes.
+          observe                 Capture screenshots, trees, maps, and raw runtime data.
+          inspect                 Query or inspect nodes and paint stacks.
+          act                     Dispatch input and wait for UI state.
+          ui                      Audit, mutate, and compare UI structure.
+          debug                   Read logs, network events, and reference evidence.
+          state                   Inspect defaults, flags, and keychain metadata.
+          env                     Change runtime environment such as appearance.
+          perf                    Run small performance probes.
+          trace                   Explore, summarize, and diff action traces.
+          skills                  Install Loupe workflow skills.
 
-        OBSERVE SUBCOMMANDS:
-          capture-report          Capture screenshot and runtime structure artifacts.
-          screen-map              Print visible semantic and styled elements.
-          tree                    Print view or accessibility trees.
-          inspect                 Inspect one matched node with local context.
-          query                   Query a snapshot by selector.
-          logs                    Fetch app-authored Loupe runtime logs.
-          screenshot              Save a simulator screenshot to a path.
-
-        ACT SUBCOMMANDS:
-          tap                     Tap a selector, ref, or coordinate.
-          swipe, drag             Dispatch one-finger simulator gestures.
-          type                    Type text into the focused field.
-          explore-routes          Probe visible route-like controls.
-          trace-summary           Summarize action trace artifacts.
-          diff                    Compare before/after snapshots.
-
-        MUTATE SUBCOMMANDS:
-          mutations               List supported runtime mutations.
-          set, set-many           Mutate supported UIKit properties.
-          constraints             Inspect captured Auto Layout constraints.
-          set-constraint          Mutate a captured constraint.
-
-        OTHER SUBCOMMANDS:
+        DIAGNOSTICS:
           doctor                  Check local installation health.
           injector-path           Print the resolved injector path.
-          cleanup                 Prune stale runtime records and traces.
-          skills                  Install the Loupe agent skill.
           version                 Show the current Loupe version.
 
-          See 'loupe help <subcommand>' for detailed help.
+          Existing flat commands remain as compatibility aliases.
+          See 'loupe help <domain> <subcommand>' for detailed help.
         """
     }
 
@@ -979,16 +982,228 @@ struct LoupeCLI {
         printSummaryHelp()
     }
 
-    private static func printCommandHelp(_ command: String) {
-        if let usage = commandUsage(command) {
+    private static func printCommandHelp(_ path: [String]) {
+        guard let command = path.first else {
+            printHelp()
+            return
+        }
+
+        let usageKey: String
+        if path.count >= 2 {
+            usageKey = "\(command) \(path[1])"
+        } else {
+            usageKey = command
+        }
+
+        if let usage = commandUsage(usageKey) {
             print(usage)
         } else {
             printHelp()
         }
     }
 
+    static let targetUsage = """
+    Usage: loupe target <subcommand>
+
+    SUBCOMMANDS:
+      list                    List known runtime targets.
+      use                     Select the current runtime target.
+      current                 Show the current runtime target.
+    """
+
+    static let runtimeUsage = """
+    Usage: loupe runtime <subcommand>
+
+    SUBCOMMANDS:
+      start                   Launch and inject an app runtime.
+      launch                  Launch an app through the platform backend.
+      list                    List known injected runtimes.
+      use                     Select the current runtime.
+      current                 Show the current runtime selection.
+      info                    Fetch runtime identity and health.
+      logs                    Fetch runtime logs.
+      cleanup                 Prune stale runtime records and traces.
+    """
+
+    static let observeUsage = """
+    Usage: loupe observe <subcommand>
+
+    SUBCOMMANDS:
+      capture                 Capture screenshot and runtime structure artifacts.
+      tree                    Print view or accessibility trees.
+      screen                  Print visible semantic and styled elements.
+      screenshot              Save a platform screenshot to a path.
+      accessibility           Export an accessibility tree from a snapshot.
+      compact                 Compact a full snapshot for agents.
+      fetch                   Fetch a raw runtime endpoint.
+    """
+
+    static let inspectUsage = """
+    Usage: loupe inspect <snapshot.json> (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--include-hidden] [--node-only|--fields node,parent,children,siblings]
+
+    Grouped aliases:
+      loupe inspect node      Inspect one matched node with local context.
+      loupe inspect query     Query a snapshot by selector.
+      loupe inspect subtree   Print a bounded subtree around a matched node.
+      loupe inspect paint     Inspect paint stack ordering at a point or ref.
+    """
+
+    static let actUsage = """
+    Usage: loupe act <subcommand>
+
+    SUBCOMMANDS:
+      tap                     Tap a selector, ref, or coordinate.
+      swipe                   Dispatch a one-finger swipe.
+      drag                    Dispatch a one-finger drag.
+      type                    Type text into the focused field.
+      wait                    Wait for visible, gone, or value state.
+    """
+
+    static let uiUsage = """
+    Usage: loupe ui <subcommand>
+
+    SUBCOMMANDS:
+      audit                   Audit layout, contrast, and target sizing.
+      mutations               List supported runtime UI mutations.
+      set                     Mutate one supported UI property.
+      set-many                Mutate matching UI properties in a batch.
+      constraints             Inspect captured layout constraints.
+      set-constraint          Mutate a captured constraint.
+      deactivate-constraint   Deactivate a captured constraint.
+      compare-design          Compare a snapshot with exported design data.
+      hit-test                Inspect the view intercepting a point.
+      responder-chain         Inspect responders for a selector.
+    """
+
+    static let traceUsage = """
+    Usage: loupe trace <subcommand>
+
+    SUBCOMMANDS:
+      summary                 Summarize action trace artifacts.
+      diff                    Compare before/after snapshots.
+      explore                 Probe visible route-like controls.
+      cleanup                 Prune stale trace bundles.
+    """
+
     static func commandUsage(_ command: String) -> String? {
         switch command {
+        case "target":
+            return targetUsage
+        case "runtime":
+            return runtimeUsage
+        case "observe":
+            return observeUsage
+        case "inspect":
+            return inspectUsage
+        case "act":
+            return actUsage
+        case "ui":
+            return uiUsage
+        case "debug":
+            return debugUsage
+        case "state":
+            return stateUsage
+        case "env":
+            return envUsage
+        case "perf":
+            return perfUsage
+        case "trace":
+            return traceUsage
+        case "target list":
+            return "Usage: loupe target list [--json] [--timeout <seconds>]"
+        case "target use":
+            return "Usage: loupe target use <bundle-id> | --bundle-id <id> | --host <url> [--udid <sim>]"
+        case "target current":
+            return "Usage: loupe target current [--json] [--timeout <seconds>]"
+        case "runtime start":
+            return "Usage: loupe runtime start --bundle-id <id> [--device <sim>|--udid <sim>] [--port <port>] [--env KEY=VALUE] [--timeout <seconds>]"
+        case "runtime launch":
+            return "Usage: loupe runtime launch --bundle-id <id> [--device <sim>|--udid <sim>] [--inject] [--dylib <path>] [--env KEY=VALUE] [--timeout <seconds>]"
+        case "runtime list":
+            return "Usage: loupe runtime list [--json] [--timeout <seconds>]"
+        case "runtime use":
+            return "Usage: loupe runtime use <bundle-id> | --bundle-id <id> | --host <url> [--udid <sim>]"
+        case "runtime current":
+            return "Usage: loupe runtime current [--json] [--timeout <seconds>]"
+        case "runtime info":
+            return "Usage: loupe runtime info [--host <url>] [--udid <sim>] [--output <path>]"
+        case "runtime logs":
+            return "Usage: loupe runtime logs [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "observe capture", "observe capture-report":
+            return "Usage: loupe observe capture [--host <url>] [--udid <sim>] [--bundle-id <id>] --output <dir> [--screen-map-limit <n>] [--timeout <seconds>]"
+        case "observe tree":
+            return """
+            Usage: loupe observe tree [snapshot.json] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--view|--accessibility] [--depth <n>]
+                   loupe observe tree --interesting|--visible-leaves|--text|--mutable
+
+            Print a human-readable tree. Use --mutable to discover refs likely useful for runtime mutation.
+            """
+        case "observe text", "observe text-map":
+            return "Usage: loupe observe text [snapshot.json] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--accessibility]"
+        case "observe screen", "observe screen-map":
+            return "Usage: loupe observe screen [snapshot.json] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--include-hidden] [--include-containers] [--limit <n>]"
+        case "observe screenshot":
+            return "Usage: loupe observe screenshot --udid <sim> --output <path> [--timeout <seconds>]"
+        case "inspect node":
+            return "Usage: loupe inspect node <snapshot.json> (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--include-hidden] [--fields node,parent,children,siblings]"
+        case "inspect query":
+            return "Usage: loupe inspect query [snapshot.json] (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--host <url>] [--bundle-id <id>] [--tree view|accessibility]"
+        case "inspect subtree":
+            return "Usage: loupe inspect subtree <snapshot.json> (--test-id <id> | --text <text> | --role <role> | --ref <ref>) [--depth <n>] [--include-hidden]"
+        case "inspect paint", "inspect paint-stack":
+            return "Usage: loupe inspect paint [snapshot.json] (--point x,y | --ref <ref>) [--host <url>] [--udid <sim>] [--bundle-id <id>] [--limit <n>] [--json]"
+        case "act tap":
+            return "Usage: loupe act tap (--test-id <id> | --ref <ref> | --x <n> --y <n>) --udid <sim> [--host <url>] [--snapshot <snapshot.json>] [--trace-dir <path>] [--expect-visible <testID>]"
+        case "act swipe":
+            return "Usage: loupe act swipe --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--no-verify-scroll] [--trace-dir <path>]"
+        case "act drag":
+            return "Usage: loupe act drag --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>]"
+        case "act type":
+            return "Usage: loupe act type <text> --udid <sim> [--host <url>] [--trace-dir <path>]"
+        case "act wait":
+            return "Usage: loupe act wait visible|gone|value <selector> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--timeout <seconds>]"
+        case "ui audit":
+            return AuditOptions.usage.replacingOccurrences(of: "loupe audit", with: "loupe ui audit")
+        case "ui mutations":
+            return "Usage: loupe ui mutations [--host <url>] [--udid <sim>] [--bundle-id <id>]"
+        case "ui set":
+            return MutationSetOptions.usage.replacingOccurrences(of: "loupe set", with: "loupe ui set")
+        case "ui set-many":
+            return BatchMutationOptions.usage.replacingOccurrences(of: "loupe set-many", with: "loupe ui set-many")
+        case "ui constraints":
+            return ConstraintListOptions.usage.replacingOccurrences(of: "loupe constraints", with: "loupe ui constraints")
+        case "ui set-constraint":
+            return ConstraintMutationOptions.usage(deactivate: false).replacingOccurrences(of: "loupe set-constraint", with: "loupe ui set-constraint")
+        case "ui deactivate-constraint":
+            return ConstraintMutationOptions.usage(deactivate: true).replacingOccurrences(of: "loupe deactivate-constraint", with: "loupe ui deactivate-constraint")
+        case "ui reflect":
+            return "Usage: loupe ui reflect <mutation-response.json> --source <dir> [--output <path>]"
+        case "ui compare-design":
+            return "Usage: loupe ui compare-design <snapshot.json> <design.json> [--json] [--limit <n>]"
+        case "ui hit-test":
+            return "Usage: loupe ui hit-test --point x,y [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "ui responder-chain":
+            return "Usage: loupe ui responder-chain (--test-id <id> | --ref <ref> | --text <text> | --role <role>) [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "debug console":
+            return "Usage: loupe debug console [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "debug network":
+            return "Usage: loupe debug network [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "state defaults":
+            return "Usage: loupe state defaults get|set|unset <key> [value] [--bool true|false] [--number n] [--host <url>] [--output <path>]"
+        case "state flags":
+            return "Usage: loupe state flags get|set|unset <key> [value] [--bool true|false] [--number n] [--host <url>] [--output <path>]"
+        case "state keychain":
+            return "Usage: loupe state keychain list [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "env appearance":
+            return "Usage: loupe env appearance [light|dark|system] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "perf scroll":
+            return "Usage: loupe perf scroll --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>] [--output <path>]"
+        case "trace summary":
+            return "Usage: loupe trace summary <trace-dir> [--json] [--limit <n>]"
+        case "trace diff":
+            return "Usage: loupe trace diff <before-snapshot.json> <after-snapshot.json> [--json] [--changed-only] [--limit <n>]"
+        case "trace explore":
+            return "Usage: loupe trace explore [--host <url>] [--udid <sim>] [--bundle-id <id>] [--limit <n>] [--settle <seconds>] [--back-point x,y] [--trace-dir <dir>] [--output <path>] [--json]"
         case "start":
             return """
             Usage: loupe start --bundle-id <id> [--device <sim>|--udid <sim>] [--port <port>] [--env KEY=VALUE] [--timeout <seconds>]
@@ -1105,7 +1320,7 @@ struct LoupeCLI {
         "\(format(color.red)),\(format(color.green)),\(format(color.blue)),\(format(color.alpha))"
     }
 
-    private static func mutations(_ arguments: [String]) async throws {
+    static func mutations(_ arguments: [String]) async throws {
         let options = try MutationListOptions(arguments)
         guard let selector = options.selector else {
             try await runtimeFetch(
@@ -1142,7 +1357,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func constraints(_ arguments: [String]) async throws {
+    static func constraints(_ arguments: [String]) async throws {
         let options = try ConstraintListOptions(arguments)
         let snapshot: LoupeSnapshot
         if let snapshotURL = options.snapshotURL {
@@ -1184,7 +1399,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func set(_ arguments: [String]) async throws {
+    static func set(_ arguments: [String]) async throws {
         if arguments.contains("--list") {
             try await runtimeFetch(
                 arguments.filter { $0 != "--list" },
@@ -1229,7 +1444,7 @@ struct LoupeCLI {
         try write(data: data, outputURL: options.outputURL)
     }
 
-    private static func setMany(_ arguments: [String]) async throws {
+    static func setMany(_ arguments: [String]) async throws {
         let startedAt = Date()
         let options = try BatchMutationOptions(arguments)
         let host = try await resolvedRuntimeHost(
@@ -1313,7 +1528,7 @@ struct LoupeCLI {
         try write(data: resultData, outputURL: options.outputURL)
     }
 
-    private static func mutateConstraint(_ arguments: [String], deactivate: Bool) async throws {
+    static func mutateConstraint(_ arguments: [String], deactivate: Bool) async throws {
         let options = try ConstraintMutationOptions(arguments, deactivate: deactivate)
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
@@ -1345,7 +1560,7 @@ struct LoupeCLI {
         try write(data: data, outputURL: options.outputURL)
     }
 
-    private static func reflect(_ arguments: [String]) throws {
+    static func reflect(_ arguments: [String]) throws {
         let options = try MutationReflectOptions(arguments)
         let data = try Data(contentsOf: options.mutationURL)
         let decoder = JSONDecoder()
@@ -1358,7 +1573,7 @@ struct LoupeCLI {
         try write(data: try encoder.encode(reflection), outputURL: options.outputURL)
     }
 
-    private static func runtimes(_ arguments: [String]) async throws {
+    static func runtimes(_ arguments: [String]) async throws {
         let options = try RuntimeListOptions(arguments)
         let records = try loadRuntimeHostRecords()
         var rows: [RuntimeListRow] = []
@@ -1407,7 +1622,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func screenshot(_ arguments: [String]) throws {
+    static func screenshot(_ arguments: [String]) throws {
         let options = try ScreenshotOptions(arguments)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -1415,7 +1630,7 @@ struct LoupeCLI {
         try run(process, label: "simctl screenshot", timeout: options.timeout)
     }
 
-    private static func exploreRoutes(_ arguments: [String]) async throws {
+    static func exploreRoutes(_ arguments: [String]) async throws {
         let options = try ExploreRoutesOptions(arguments)
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
@@ -1698,7 +1913,7 @@ struct LoupeCLI {
         return lines.joined(separator: "\n")
     }
 
-    private static func action(command: String, arguments: [String]) async throws {
+    static func action(command: String, arguments: [String]) async throws {
         var options = try ActionOptions(command: command, arguments: arguments)
         var target: ActionTarget?
         do {
@@ -1794,7 +2009,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func waitFor(_ arguments: [String], mode: WaitMode) async throws {
+    static func waitFor(_ arguments: [String], mode: WaitMode) async throws {
         let options = try WaitForOptions(arguments, mode: mode)
         let host = try await resolvedRuntimeHost(
             requestedHost: options.host,
@@ -2849,19 +3064,35 @@ struct LoupeCLI {
             throw CLIError("Could not parse booted simulator list")
         }
 
-        let booted = devicesByRuntime.values
-            .flatMap { $0 }
-            .filter { ($0["state"] as? String) == "Booted" }
+        let booted = Self.preferredBootedDevice(in: devicesByRuntime)
 
-        guard booted.count == 1 else {
-            throw CLIError("Expected exactly one booted simulator, found \(booted.count). Pass --udid <UDID>.")
+        guard let booted else {
+            let count = devicesByRuntime.values.flatMap { $0 }.filter { ($0["state"] as? String) == "Booted" }.count
+            throw CLIError("Expected exactly one booted simulator, or exactly one booted iPhone when multiple platforms are booted. Found \(count). Pass --udid <UDID>.")
         }
 
-        guard let udid = booted[0]["udid"] as? String else {
+        guard let udid = booted["udid"] as? String else {
             throw CLIError("Booted simulator did not include a UDID")
         }
 
         return udid
+    }
+
+    static func preferredBootedDevice(in devicesByRuntime: [String: [[String: Any]]]) -> [String: Any]? {
+        let booted = devicesByRuntime.values
+            .flatMap { $0 }
+            .filter { ($0["state"] as? String) == "Booted" }
+
+        if booted.count == 1 {
+            return booted[0]
+        }
+
+        let bootedPhones = devicesByRuntime
+            .filter { runtime, _ in runtime.contains(".iOS-") || runtime.hasSuffix(".iOS") }
+            .flatMap(\.value)
+            .filter { ($0["state"] as? String) == "Booted" && (($0["name"] as? String)?.contains("iPhone") == true) }
+
+        return bootedPhones.count == 1 ? bootedPhones[0] : nil
     }
 
     private static func resolveSimulatorUDID(_ requested: String) throws -> String {

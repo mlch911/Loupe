@@ -1,9 +1,8 @@
 import Foundation
 import LoupeCore
 
-#if canImport(UIKit)
+#if canImport(Darwin)
 import Darwin
-import UIKit
 
 public final class LoupeServer: @unchecked Sendable {
     public static let defaultPort: UInt16 = 8765
@@ -180,6 +179,50 @@ public final class LoupeServer: @unchecked Sendable {
             } catch {
                 return ResponsePayload(status: 500, body: errorBody("logs_encoding_failed", error: error))
             }
+        case "/network":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeRuntime.shared.runtimeNetworkEvents())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("network_encoding_failed", error: error))
+            }
+        case "/environment":
+            do {
+                let response: LoupeEnvironmentMutationResponse
+                if request.method == "POST" {
+                    let mutation = try JSONDecoder().decode(LoupeEnvironmentMutationRequest.self, from: request.body)
+                    response = try LoupeAgent().setEnvironment(mutation)
+                } else {
+                    response = LoupeAgent().currentEnvironment()
+                }
+                let data = try makeLoupeJSONEncoder().encode(response)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 400, body: errorBody("environment_failed", error: error))
+            }
+        case "/state/defaults", "/state/flags":
+            do {
+                if request.method == "POST" {
+                    let mutation = try JSONDecoder().decode(LoupeStateMutationRequest.self, from: request.body)
+                    let data = try makeLoupeJSONEncoder().encode(LoupeAgent().setDefault(mutation))
+                    return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+                }
+
+                guard let key = request.queryItems["key"] else {
+                    return ResponsePayload(status: 400, body: #"{"error":"missing_key"}"#)
+                }
+                let data = try makeLoupeJSONEncoder().encode(LoupeAgent().defaultsEntry(key: key))
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 400, body: errorBody("state_failed", error: error))
+            }
+        case "/state/keychain":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(LoupeAgent().keychainItems())
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("keychain_encoding_failed", error: error))
+            }
         case "/snapshot":
             do {
                 let data = try makeLoupeJSONEncoder().encode(LoupeAgent().captureSnapshot())
@@ -231,6 +274,27 @@ public final class LoupeServer: @unchecked Sendable {
                 return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
             } catch {
                 return ResponsePayload(status: 500, body: errorBody("audit_encoding_failed", error: error))
+            }
+        case "/hit-test":
+            do {
+                let point = try point(from: request.queryItems)
+                let data = try makeLoupeJSONEncoder().encode(LoupeAgent().hitTest(point: point))
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 400, body: errorBody("hit_test_failed", error: error))
+            }
+        case "/responder-chain":
+            do {
+                guard let selector = selector(from: request.queryItems) else {
+                    return ResponsePayload(status: 400, body: #"{"error":"missing_selector"}"#)
+                }
+                guard let report = LoupeAgent().responderChain(selector: selector) else {
+                    return ResponsePayload(status: 404, body: #"{"error":"node_not_found"}"#)
+                }
+                let data = try makeLoupeJSONEncoder().encode(report)
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("responder_chain_failed", error: error))
             }
         case "/observation":
             do {
@@ -349,6 +413,24 @@ public final class LoupeServer: @unchecked Sendable {
             return .role(role)
         }
         return nil
+    }
+
+    private func point(from queryItems: [String: String]) throws -> LoupePoint {
+        if let point = queryItems["point"] {
+            let parts = point.split(separator: ",")
+            guard parts.count == 2,
+                  let x = Double(parts[0]),
+                  let y = Double(parts[1]) else {
+                throw LoupeDiagnosticError(message: "Expected point as x,y")
+            }
+            return LoupePoint(x: x, y: y)
+        }
+
+        guard let rawX = queryItems["x"], let rawY = queryItems["y"],
+              let x = Double(rawX), let y = Double(rawY) else {
+            throw LoupeDiagnosticError(message: "Expected --point x,y or --x <n> --y <n>")
+        }
+        return LoupePoint(x: x, y: y)
     }
 }
 
