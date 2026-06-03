@@ -172,48 +172,6 @@ public final class LoupeAgent {
         return hitTest(point: frame.center)
     }
 
-    public func mutateConstraint(_ request: LoupeConstraintMutationRequest) throws -> LoupeConstraintMutationResponse {
-        guard request.constant != nil || request.priority != nil || request.isActive != nil else {
-            throw LoupeMutationError(code: "missing_constraint_mutation", message: "Constraint mutation requires constant, priority, or isActive.")
-        }
-        guard let constraint = runtimeConstraints().first(where: { constraintID($0) == request.id }) else {
-            throw LoupeMutationError(status: 404, code: "constraint_not_found", message: "No runtime constraint matched id \(request.id).")
-        }
-
-        let before = layoutConstraintProperties(constraint)
-        if let constant = request.constant {
-            constraint.constant = CGFloat(constant)
-        }
-        if let priority = request.priority {
-            guard priority >= 1, priority <= 1000 else {
-                throw LoupeMutationError(code: "invalid_value", message: "Constraint priority must be between 1 and 1000.")
-            }
-            constraint.priority = UILayoutPriority(Float(priority))
-        }
-        if let isActive = request.isActive {
-            constraint.isActive = isActive
-        }
-
-        if request.layout {
-            layoutRuntimeWindows()
-        }
-
-        let after = layoutConstraintProperties(constraint)
-        let changed = constraintMutationMatches(request, after)
-        let warning = changed ? nil : "Constraint mutation applied, but the effective constraint does not match the requested value. A layout owner may have restored it."
-        let snapshot = captureSnapshot()
-
-        return LoupeConstraintMutationResponse(
-            id: request.id,
-            before: before,
-            after: after,
-            requested: request,
-            changed: changed,
-            warning: warning,
-            snapshotID: snapshot.id
-        )
-    }
-
     public func encodedSnapshot() throws -> Data {
         try encodedSnapshot(encoder: makeLoupeJSONEncoder())
     }
@@ -342,103 +300,6 @@ public final class LoupeAgent {
         )
 
         return ref
-    }
-
-    private func captureSyntheticBarButtonItems(
-        in view: UIView,
-        parentRef: String,
-        inheritedVisible: Bool,
-        nodes: inout [String: LoupeNode]
-    ) -> [String] {
-        guard let navigationBar = view as? UINavigationBar, let item = navigationBar.topItem else {
-            return []
-        }
-
-        let leftItems = item.leftBarButtonItems ?? item.leftBarButtonItem.map { [$0] } ?? []
-        let rightItems = item.rightBarButtonItems ?? item.rightBarButtonItem.map { [$0] } ?? []
-        let candidates = barButtonCandidateViews(in: navigationBar)
-        var consumedCandidateIDs = Set<ObjectIdentifier>()
-        var refs: [String] = []
-
-        for (index, barButtonItem) in leftItems.enumerated() {
-            let ref = makeRef()
-            let match = matchedBarButtonView(
-                for: barButtonItem,
-                position: "left",
-                index: index,
-                candidates: candidates,
-                consumedCandidateIDs: &consumedCandidateIDs
-            )
-            nodes[ref] = syntheticBarButtonNode(
-                barButtonItem,
-                ref: ref,
-                parentRef: parentRef,
-                position: "left",
-                index: index,
-                matchedView: match,
-                inheritedVisible: inheritedVisible
-            )
-            refs.append(ref)
-        }
-
-        for (index, barButtonItem) in rightItems.enumerated() {
-            let ref = makeRef()
-            let match = matchedBarButtonView(
-                for: barButtonItem,
-                position: "right",
-                index: index,
-                candidates: candidates,
-                consumedCandidateIDs: &consumedCandidateIDs
-            )
-            nodes[ref] = syntheticBarButtonNode(
-                barButtonItem,
-                ref: ref,
-                parentRef: parentRef,
-                position: "right",
-                index: index,
-                matchedView: match,
-                inheritedVisible: inheritedVisible
-            )
-            refs.append(ref)
-        }
-
-        return refs
-    }
-
-    private func captureSyntheticTabBarItems(
-        in view: UIView,
-        parentRef: String,
-        inheritedVisible: Bool,
-        nodes: inout [String: LoupeNode]
-    ) -> [String] {
-        guard let tabBar = view as? UITabBar, let items = tabBar.items, !items.isEmpty else {
-            return []
-        }
-
-        let candidates = tabBarItemCandidateViews(in: tabBar)
-        var consumedCandidateIDs = Set<ObjectIdentifier>()
-        var refs: [String] = []
-
-        for (index, tabBarItem) in items.enumerated() {
-            let ref = makeRef()
-            let match = matchedTabBarItemView(
-                for: tabBarItem,
-                candidates: candidates,
-                consumedCandidateIDs: &consumedCandidateIDs
-            )
-            nodes[ref] = syntheticTabBarItemNode(
-                tabBarItem,
-                ref: ref,
-                parentRef: parentRef,
-                index: index,
-                selected: tabBar.selectedItem === tabBarItem,
-                matchedView: match,
-                inheritedVisible: inheritedVisible
-            )
-            refs.append(ref)
-        }
-
-        return refs
     }
 
     private func captureNativeAccessibilityTree(
@@ -624,7 +485,7 @@ public final class LoupeAgent {
         return elements
     }
 
-    private func makeRef() -> String {
+    func makeRef() -> String {
         nextRef += 1
         return "n\(nextRef)"
     }
@@ -1194,7 +1055,7 @@ private func stackViewProperties(for view: UIView) -> LoupeUIStackViewProperties
 }
 
 @MainActor
-private func layoutConstraintProperties(_ constraint: NSLayoutConstraint) -> LoupeUILayoutConstraintProperties {
+func layoutConstraintProperties(_ constraint: NSLayoutConstraint) -> LoupeUILayoutConstraintProperties {
     LoupeUILayoutConstraintProperties(
         id: constraintID(constraint),
         identifier: constraint.identifier,
@@ -1211,67 +1072,12 @@ private func layoutConstraintProperties(_ constraint: NSLayoutConstraint) -> Lou
 }
 
 @MainActor
-private func constraintID(_ constraint: NSLayoutConstraint) -> String {
+func constraintID(_ constraint: NSLayoutConstraint) -> String {
     let raw = String(describing: ObjectIdentifier(constraint))
     let value = raw
         .replacingOccurrences(of: "ObjectIdentifier(", with: "")
         .replacingOccurrences(of: ")", with: "")
     return "c\(value)"
-}
-
-@MainActor
-private func runtimeConstraints() -> [NSLayoutConstraint] {
-    var constraints: [NSLayoutConstraint] = []
-    var seen = Set<ObjectIdentifier>()
-
-    func append(_ constraint: NSLayoutConstraint) {
-        let id = ObjectIdentifier(constraint)
-        guard !seen.contains(id) else {
-            return
-        }
-        seen.insert(id)
-        constraints.append(constraint)
-    }
-
-    func visit(_ view: UIView) {
-        view.constraints.forEach(append)
-        view.constraintsAffectingLayout(for: .horizontal).forEach(append)
-        view.constraintsAffectingLayout(for: .vertical).forEach(append)
-        view.subviews.forEach(visit)
-    }
-
-    for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-        for window in scene.windows {
-            visit(window)
-        }
-    }
-    return constraints
-}
-
-@MainActor
-private func layoutRuntimeWindows() {
-    for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-        for window in scene.windows {
-            window.setNeedsLayout()
-            window.layoutIfNeeded()
-        }
-    }
-}
-
-private func constraintMutationMatches(
-    _ request: LoupeConstraintMutationRequest,
-    _ effective: LoupeUILayoutConstraintProperties
-) -> Bool {
-    if let constant = request.constant, abs(effective.constant - constant) >= 0.5 {
-        return false
-    }
-    if let priority = request.priority, abs(effective.priority - priority) >= 0.5 {
-        return false
-    }
-    if let isActive = request.isActive, effective.isActive != isActive {
-        return false
-    }
-    return true
 }
 
 @MainActor

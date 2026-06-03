@@ -4,6 +4,105 @@ import LoupeCore
 #if canImport(UIKit)
 import UIKit
 
+extension LoupeAgent {
+    func captureSyntheticBarButtonItems(
+        in view: UIView,
+        parentRef: String,
+        inheritedVisible: Bool,
+        nodes: inout [String: LoupeNode]
+    ) -> [String] {
+        guard let navigationBar = view as? UINavigationBar, let item = navigationBar.topItem else {
+            return []
+        }
+
+        let leftItems = item.leftBarButtonItems ?? item.leftBarButtonItem.map { [$0] } ?? []
+        let rightItems = item.rightBarButtonItems ?? item.rightBarButtonItem.map { [$0] } ?? []
+        let candidates = barButtonCandidateViews(in: navigationBar)
+        var consumedCandidateIDs = Set<ObjectIdentifier>()
+        var refs: [String] = []
+
+        for (index, barButtonItem) in leftItems.enumerated() {
+            let ref = makeRef()
+            let match = matchedBarButtonView(
+                for: barButtonItem,
+                position: "left",
+                index: index,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticBarButtonNode(
+                barButtonItem,
+                ref: ref,
+                parentRef: parentRef,
+                position: "left",
+                index: index,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        for (index, barButtonItem) in rightItems.enumerated() {
+            let ref = makeRef()
+            let match = matchedBarButtonView(
+                for: barButtonItem,
+                position: "right",
+                index: index,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticBarButtonNode(
+                barButtonItem,
+                ref: ref,
+                parentRef: parentRef,
+                position: "right",
+                index: index,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        return refs
+    }
+
+    func captureSyntheticTabBarItems(
+        in view: UIView,
+        parentRef: String,
+        inheritedVisible: Bool,
+        nodes: inout [String: LoupeNode]
+    ) -> [String] {
+        guard let tabBar = view as? UITabBar, let items = tabBar.items, !items.isEmpty else {
+            return []
+        }
+
+        let candidates = tabBarItemCandidateViews(in: tabBar)
+        var consumedCandidateIDs = Set<ObjectIdentifier>()
+        var refs: [String] = []
+
+        for (index, tabBarItem) in items.enumerated() {
+            let ref = makeRef()
+            let match = matchedTabBarItemView(
+                for: tabBarItem,
+                candidates: candidates,
+                consumedCandidateIDs: &consumedCandidateIDs
+            )
+            nodes[ref] = syntheticTabBarItemNode(
+                tabBarItem,
+                ref: ref,
+                parentRef: parentRef,
+                index: index,
+                selected: tabBar.selectedItem === tabBarItem,
+                matchedView: match,
+                inheritedVisible: inheritedVisible
+            )
+            refs.append(ref)
+        }
+
+        return refs
+    }
+}
+
 @MainActor
 func syntheticBarButtonNode(
     _ item: UIBarButtonItem,
