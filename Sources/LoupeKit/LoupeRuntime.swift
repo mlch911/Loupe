@@ -1,15 +1,6 @@
 import Foundation
 import LoupeCore
 
-#if canImport(UIKit) || canImport(AppKit)
-#if canImport(UIKit)
-import UIKit
-typealias LoupePlatformView = UIView
-#elseif canImport(AppKit)
-import AppKit
-typealias LoupePlatformView = NSView
-#endif
-
 @MainActor
 public final class LoupeRuntime {
     public static let shared = LoupeRuntime()
@@ -20,15 +11,16 @@ public final class LoupeRuntime {
     private var referenceEvidence: [LoupeReferenceEvidence] = []
     private var lifetimeProbes: [LoupeLifetimeProbeRecord] = []
     private var metadataByTestID: [String: [String: LoupeMetadataValue]] = [:]
+    private var probesByID: [String: LoupeRegisteredProbe] = [:]
     private var didInstallBridge = false
 
     private init() {
         let environment = ProcessInfo.processInfo.environment
         let simulatorUDID = environment["SIMULATOR_UDID"]
         identity = LoupeRuntimeIdentity(
-            platform: Self.platformName,
+            platform: LoupePlatformSupport.platformName,
             deviceIdentifier: environment["LOUPE_DEVICE_ID"] ?? simulatorUDID,
-            deviceName: Self.deviceName,
+            deviceName: LoupePlatformSupport.deviceName,
             bundleIdentifier: Bundle.main.bundleIdentifier,
             processIdentifier: ProcessInfo.processInfo.processIdentifier,
             simulatorUDID: simulatorUDID,
@@ -68,6 +60,47 @@ public final class LoupeRuntime {
             suspectedLeakCount: suspectedLeakCount,
             probes: visibleProbes
         )
+    }
+
+    public func registerProbe(
+        id: String,
+        label: String? = nil,
+        role: String = "group",
+        frame: LoupeRect? = nil,
+        isVisible: Bool = true,
+        isEnabled: Bool = true,
+        isInteractive: Bool = false,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        guard let id = nonEmpty(id) else {
+            return
+        }
+        var mergedMetadata = metadata
+        mergedMetadata["id"] = .string(id)
+        mergedMetadata["loupe.probe"] = .bool(true)
+        probesByID[id] = LoupeRegisteredProbe(
+            id: id,
+            label: nonEmpty(label),
+            role: nonEmpty(role) ?? "group",
+            frame: frame,
+            isVisible: isVisible,
+            isEnabled: isEnabled,
+            isInteractive: isInteractive,
+            metadata: mergedMetadata
+        )
+    }
+
+    public func unregisterProbe(id: String) {
+        guard let id = nonEmpty(id) else {
+            return
+        }
+        probesByID.removeValue(forKey: id)
+    }
+
+    func registeredProbes() -> [LoupeRegisteredProbe] {
+        probesByID.values.sorted { lhs, rhs in
+            lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
+        }
     }
 
     func metadata(forTestID testID: String?) -> [String: LoupeMetadataValue] {
@@ -165,30 +198,20 @@ public final class LoupeRuntime {
             name: .loupeLifetimeProbe,
             object: nil
         )
-        LoupeNetworkCaptureProtocol.install()
+        center.addObserver(
+            self,
+            selector: #selector(receiveProbeNotification(_:)),
+            name: .loupeProbe,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(receiveRemoveProbeNotification(_:)),
+            name: .loupeRemoveProbe,
+            object: nil
+        )
+        LoupePlatformSupport.installAutomaticNetworkCapture()
         didInstallBridge = true
-    }
-
-    private static var platformName: String {
-        #if os(iOS)
-        return "iOS"
-        #elseif os(tvOS)
-        return "tvOS"
-        #elseif os(macOS)
-        return "macOS"
-        #else
-        return "Apple"
-        #endif
-    }
-
-    private static var deviceName: String? {
-        #if canImport(UIKit)
-        UIDevice.current.name
-        #elseif canImport(AppKit)
-        Host.current().localizedName
-        #else
-        nil
-        #endif
     }
 
     @objc private nonisolated func receiveLogNotification(_ notification: Notification) {
@@ -238,9 +261,11 @@ public final class LoupeRuntime {
 
     @MainActor
     private func receiveViewMetadataPayload(_ payload: LoupeViewMetadataNotificationPayload) {
+        #if (canImport(UIKit) && !os(watchOS)) || canImport(AppKit)
         if let view = payload.view {
-            view.loupeMetadata.merge(payload.metadata) { _, new in new }
+            LoupePlatformSupport.mergeMetadata(payload.metadata, into: view)
         }
+        #endif
 
         if let testID = payload.testID {
             var existing = metadataByTestID[testID] ?? [:]
@@ -313,6 +338,56 @@ public final class LoupeRuntime {
         )
     }
 
+    @objc private nonisolated func receiveProbeNotification(_ notification: Notification) {
+        guard let payload = LoupeProbeNotificationPayload(notification: notification) else {
+            return
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.registerProbePayload(payload)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.registerProbePayload(payload)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func registerProbePayload(_ payload: LoupeProbeNotificationPayload) {
+        registerProbe(
+            id: payload.id,
+            label: payload.label,
+            role: payload.role,
+            frame: payload.frame,
+            isVisible: payload.isVisible,
+            isEnabled: payload.isEnabled,
+            isInteractive: payload.isInteractive,
+            metadata: payload.metadata
+        )
+    }
+
+    @objc private nonisolated func receiveRemoveProbeNotification(_ notification: Notification) {
+        guard let id = LoupeRemoveProbeNotificationPayload(notification: notification)?.id else {
+            return
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.unregisterProbe(id: id)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, id] in
+                MainActor.assumeIsolated {
+                    self?.unregisterProbe(id: id)
+                }
+            }
+        }
+    }
+
 }
 
 public enum Loupe {
@@ -365,6 +440,34 @@ public enum Loupe {
                 metadata: metadata
             )
         )
+    }
+
+    @MainActor
+    public static func registerProbe(
+        _ id: String,
+        label: String? = nil,
+        role: String = "group",
+        frame: LoupeRect? = nil,
+        isVisible: Bool = true,
+        isEnabled: Bool = true,
+        isInteractive: Bool = false,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        LoupeRuntime.shared.registerProbe(
+            id: id,
+            label: label,
+            role: role,
+            frame: frame,
+            isVisible: isVisible,
+            isEnabled: isEnabled,
+            isInteractive: isInteractive,
+            metadata: metadata
+        )
+    }
+
+    @MainActor
+    public static func unregisterProbe(_ id: String) {
+        LoupeRuntime.shared.unregisterProbe(id: id)
     }
 
     @MainActor
@@ -421,6 +524,17 @@ private final class LoupeLifetimeProbeRecord {
     }
 }
 
+struct LoupeRegisteredProbe: Equatable {
+    var id: String
+    var label: String?
+    var role: String
+    var frame: LoupeRect?
+    var isVisible: Bool
+    var isEnabled: Bool
+    var isInteractive: Bool
+    var metadata: [String: LoupeMetadataValue]
+}
+
 private func nonEmpty(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
         return nil
@@ -438,6 +552,8 @@ private func metadataPayload(from userInfo: [AnyHashable: Any]) -> [String: Loup
         "level", "message", "metadata", "view", "testID", "id",
         "owner", "target", "kind", "label",
         "object", "name", "expectedDeallocated",
+        "role", "frame", "x", "y", "width", "height",
+        "isVisible", "isEnabled", "isInteractive",
     ]
     for (rawKey, rawValue) in userInfo {
         guard let key = rawKey as? String, !reservedKeys.contains(key), let value = loupeMetadataValue(from: rawValue) else {
@@ -446,6 +562,66 @@ private func metadataPayload(from userInfo: [AnyHashable: Any]) -> [String: Loup
         payload[key] = value
     }
     return payload
+}
+
+private func loupeBoolean(from value: Any?, default defaultValue: Bool) -> Bool {
+    switch value {
+    case let value as Bool:
+        return value
+    case let value as NSNumber:
+        return value.boolValue
+    case let value as String:
+        switch value.lowercased() {
+        case "true", "yes", "1":
+            return true
+        case "false", "no", "0":
+            return false
+        default:
+            return defaultValue
+        }
+    default:
+        return defaultValue
+    }
+}
+
+private func loupeDouble(from value: Any?) -> Double? {
+    switch value {
+    case let value as Double:
+        return value
+    case let value as Float:
+        return Double(value)
+    case let value as Int:
+        return Double(value)
+    case let value as NSNumber:
+        return value.doubleValue
+    case let value as String:
+        return Double(value)
+    default:
+        return nil
+    }
+}
+
+private func loupeRectPayload(from userInfo: [AnyHashable: Any]) -> LoupeRect? {
+    if let frame = userInfo["frame"] as? [String: Any] {
+        return loupeRectPayload(from: frame)
+    }
+
+    return loupeRectPayload(from: userInfo.reduce(into: [String: Any]()) { partial, entry in
+        if let key = entry.key as? String {
+            partial[key] = entry.value
+        }
+    })
+}
+
+private func loupeRectPayload(from dictionary: [String: Any]) -> LoupeRect? {
+    guard let x = loupeDouble(from: dictionary["x"]),
+          let y = loupeDouble(from: dictionary["y"]),
+          let width = loupeDouble(from: dictionary["width"]),
+          let height = loupeDouble(from: dictionary["height"]) else {
+        return nil
+    }
+
+    return LoupeRect(x: x, y: y, width: width, height: height)
 }
 
 private func loupeMetadataValue(from value: Any) -> LoupeMetadataValue? {
@@ -492,7 +668,9 @@ private struct LoupeLogNotificationPayload: Sendable {
 }
 
 private struct LoupeViewMetadataNotificationPayload: @unchecked Sendable {
+    #if (canImport(UIKit) && !os(watchOS)) || canImport(AppKit)
     var view: LoupePlatformView?
+    #endif
     var testID: String?
     var metadata: [String: LoupeMetadataValue]
 
@@ -503,7 +681,9 @@ private struct LoupeViewMetadataNotificationPayload: @unchecked Sendable {
             return nil
         }
 
-        self.view = (notification.object as? LoupePlatformView) ?? (userInfo["view"] as? LoupePlatformView)
+        #if (canImport(UIKit) && !os(watchOS)) || canImport(AppKit)
+        self.view = LoupePlatformSupport.metadataView(from: notification, userInfo: userInfo)
+        #endif
         self.testID = nonEmpty(userInfo["testID"] as? String ?? userInfo["id"] as? String)
         self.metadata = metadata
     }
@@ -586,12 +766,52 @@ private struct LoupeLifetimeProbeNotificationPayload: @unchecked Sendable {
     }
 }
 
+private struct LoupeProbeNotificationPayload: Sendable {
+    var id: String
+    var label: String?
+    var role: String
+    var frame: LoupeRect?
+    var isVisible: Bool
+    var isEnabled: Bool
+    var isInteractive: Bool
+    var metadata: [String: LoupeMetadataValue]
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let id = nonEmpty(userInfo["id"] as? String ?? userInfo["testID"] as? String) else {
+            return nil
+        }
+
+        self.id = id
+        label = nonEmpty(userInfo["label"] as? String)
+        role = nonEmpty(userInfo["role"] as? String) ?? "group"
+        frame = loupeRectPayload(from: userInfo)
+        isVisible = loupeBoolean(from: userInfo["isVisible"], default: true)
+        isEnabled = loupeBoolean(from: userInfo["isEnabled"], default: true)
+        isInteractive = loupeBoolean(from: userInfo["isInteractive"], default: false)
+        metadata = metadataPayload(from: userInfo)
+    }
+}
+
+private struct LoupeRemoveProbeNotificationPayload: Sendable {
+    var id: String
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let id = nonEmpty(userInfo["id"] as? String ?? userInfo["testID"] as? String) else {
+            return nil
+        }
+
+        self.id = id
+    }
+}
+
 public extension Notification.Name {
     static let loupeLog = Notification.Name("dev.loupe.log")
     static let loupeViewMetadata = Notification.Name("dev.loupe.viewMetadata")
     static let loupeNetwork = Notification.Name("dev.loupe.network")
     static let loupeReference = Notification.Name("dev.loupe.reference")
     static let loupeLifetimeProbe = Notification.Name("dev.loupe.lifetimeProbe")
+    static let loupeProbe = Notification.Name("dev.loupe.probe")
+    static let loupeRemoveProbe = Notification.Name("dev.loupe.removeProbe")
 }
-
-#endif

@@ -59,13 +59,20 @@ command.
 Requirements:
 
 - macOS 14 or later.
-- Xcode with the needed iOS and tvOS Simulator runtimes installed.
+- Xcode with the needed iOS, tvOS, and optional visionOS/watchOS Simulator
+  runtimes installed.
 - For physical iOS devices: a debug build with `LoupeInjector` linked and
   embedded, Developer Mode, CoreDevice/`devicectl` availability, and Mac/device
   network reachability to the Loupe server port.
 
 Xcode and simulator versions can affect runtime injection, native HID input, and
 platform-specific runtime behavior.
+
+Current platform verification covers iOS Simulator, tvOS Simulator, and macOS
+runtime examples. visionOS Simulator builds are checked for LoupeKit and
+LoupeInjector compatibility. watchOS has a launch-time injected
+registered-probe runtime E2E example; broad automatic WatchKit/SwiftUI element
+discovery is not implemented.
 
 Loupe chooses an available localhost port for injected apps and records the
 runtime. Use `--bundle-id`, `--udid`, or `loupe app use <bundle-id>` to select
@@ -179,9 +186,11 @@ tree for layout, UIKit properties, style, mutation refs, and design checks. Use
 `ui paint` when a visual change appears hidden by a same-frame child or
 overlay:
 
-For SwiftUI, prefer stable accessibility identifiers and explicit probe anchors
-for regions that agents must inspect as durable `ui node` targets. When the app
-can import `LoupeKit`, use the public modifier:
+For SwiftUI, prefer stable accessibility identifiers and explicit probe views
+for regions that agents must inspect as durable `ui node` targets. The probe is
+attached with `background`, so Loupe captures the SwiftUI region bounds through
+the generated platform view. When the app can import `LoupeKit`, use the public
+modifier:
 
 ```swift
 import LoupeKit
@@ -194,16 +203,16 @@ VStack {
 .loupeProbe("checkout.form.probe", label: "Checkout form")
 ```
 
-If the app should not depend on `LoupeKit`, use the same idea with a
-zero-dependency helper. Loupe injection will capture the platform view because
-it only relies on standard accessibility identifiers:
+If the app should not depend on `LoupeKit`, use a local helper with a different
+name. Loupe injection will capture the platform view because it only relies on
+standard accessibility identifiers:
 
 ```swift
 import SwiftUI
 
 extension View {
-    func loupeProbe(_ id: String, label: String? = nil) -> some View {
-        background(LoupeProbeView(id: id, label: label).frame(width: 1, height: 1))
+    func localLoupeProbe(_ id: String, label: String? = nil) -> some View {
+        background(LoupeProbeView(id: id, label: label))
     }
 }
 
@@ -245,6 +254,10 @@ private struct LoupeProbeView: NSViewRepresentable {
 }
 #endif
 ```
+
+On watchOS there is no UIKit/AppKit view-tree walker. Use the same local helper
+naming, but post `dev.loupe.probe` with the measured SwiftUI bounds; the
+checked example is `Examples/LoupeWatchExample`.
 
 ```bash
 loupe ui paint loupe-report/snapshot.json --point 201,319

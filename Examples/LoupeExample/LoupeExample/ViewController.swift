@@ -986,15 +986,14 @@ struct SwiftUIFixtureView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.systemBackground))
         .accessibilityIdentifier("example.fixtures.swiftui")
-        .loupeProbe("example.fixtures.swiftui.probe", label: "iOS SwiftUI probe")
+        .localLoupeProbe("example.fixtures.swiftui.probe", label: "iOS SwiftUI probe")
     }
 }
 
 private extension View {
-    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+    func localLoupeProbe(_ id: String, label: String? = nil) -> some View {
         background {
             LoupeFallbackProbeView(id: id, label: label)
-                .frame(width: 1, height: 1)
         }
     }
 }

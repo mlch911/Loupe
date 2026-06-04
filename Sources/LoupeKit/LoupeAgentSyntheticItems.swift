@@ -1,7 +1,7 @@
 import Foundation
 import LoupeCore
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import UIKit
 
 extension LoupeAgent {
@@ -341,6 +341,16 @@ func matchedTabBarItemView(
 
 @MainActor
 func frameIntersectsScreen(_ frame: LoupeRect) -> Bool {
+    #if os(visionOS)
+    let windowFrames = UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .compactMap { frameInScreen(for: $0) }
+    guard !windowFrames.isEmpty else {
+        return true
+    }
+    return windowFrames.contains { frame.intersects($0) }
+    #else
     let bounds = UIScreen.main.bounds
     let screenFrame = LoupeRect(
         x: bounds.origin.x.doubleValue,
@@ -349,6 +359,7 @@ func frameIntersectsScreen(_ frame: LoupeRect) -> Bool {
         height: bounds.height.doubleValue
     )
     return frame.intersects(screenFrame)
+    #endif
 }
 
 @MainActor

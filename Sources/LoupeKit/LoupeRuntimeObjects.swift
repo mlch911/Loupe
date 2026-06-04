@@ -1,7 +1,7 @@
 import Foundation
 import LoupeCore
 
-#if (canImport(UIKit) || canImport(AppKit)) && canImport(ObjectiveC)
+#if ((canImport(UIKit) && !os(watchOS)) || canImport(AppKit)) && canImport(ObjectiveC)
 import ObjectiveC
 
 @MainActor

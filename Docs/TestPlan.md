@@ -77,6 +77,8 @@ does not count as evidence that the CLI or skill improved agent performance.
   `Examples/LoupeExample/run-bookmark-e2e.sh`
 - Platform build coverage:
   `scripts/verify-platform-builds.sh`
+  - Covers LoupeKit and LoupeInjector builds for iOS Simulator, macOS, tvOS,
+    visionOS Simulator, and watchOS Simulator.
 - Linked macOS AppKit runtime E2E:
   `Examples/MacLoupeExample/run-macos-e2e.sh`
   - Covers runtime-backed AppKit button activation, workbench/detail/long-list
@@ -85,6 +87,11 @@ does not count as evidence that the CLI or skill improved agent performance.
   `Examples/LoupeTVExample/run-tvos-runtime-e2e.sh`
   - Covers focus-driven remote press routing into detail and long-list screens,
     route trace artifacts, and scroll offset probes on routed scroll views.
+- watchOS Simulator registered-probe runtime E2E:
+  `Examples/LoupeWatchExample/run-watchos-runtime-e2e.sh`
+  - Covers no-import SwiftUI probe registration through the notification
+    bridge, runtime identity, accessibility export, logs, network evidence,
+    refs, lifetime probes, and defaults/flags.
 - Navigation pop by interactive edge gesture.
 - Navigation push by Loupe selector tap.
 - Navigation pop by Loupe ref tap.

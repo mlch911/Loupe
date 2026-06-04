@@ -1,12 +1,7 @@
 import Foundation
 import LoupeKit
 
-#if canImport(UIKit) || canImport(AppKit)
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
+#if (canImport(UIKit) && !os(watchOS)) || canImport(AppKit) || os(watchOS)
 
 @_cdecl("LoupeInjectorStart")
 public func LoupeInjectorStart() {

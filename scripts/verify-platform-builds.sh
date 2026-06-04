@@ -6,6 +6,8 @@ CONFIGURATION="${CONFIGURATION:-Release}"
 MACOS_DESTINATION='generic/platform=macOS'
 IOS_SIMULATOR_DESTINATION='generic/platform=iOS Simulator'
 TVOS_DESTINATION='generic/platform=tvOS'
+VISIONOS_SIMULATOR_DESTINATION='generic/platform=visionOS Simulator'
+WATCHOS_SIMULATOR_DESTINATION='generic/platform=watchOS Simulator'
 TVOS_SIMULATOR_TRIPLE="${TVOS_SIMULATOR_TRIPLE:-arm64-apple-tvos-simulator}"
 
 cd "$ROOT_DIR"
@@ -107,6 +109,15 @@ can_build_tvos_with_xcode() {
   destination_available tvOS "$output"
 }
 
+can_build_platform_with_xcode() {
+  local scheme="$1"
+  local platform="$2"
+  local output
+
+  output="$(xcodebuild -showdestinations -scheme "$scheme" 2>&1 || true)"
+  destination_available "$platform" "$output"
+}
+
 run_step "release CLI build" swift build --configuration release --disable-sandbox --product loupe
 
 run_step "macOS LoupeKit build" build_scheme LoupeKit "$MACOS_DESTINATION"
@@ -123,6 +134,20 @@ else
   run_step "tvOS LoupeKit cross-build" build_tvos_cross_target LoupeKit /tmp/loupe-platform-tvos-kit
   run_step "tvOS LoupeInjection cross-build" build_tvos_cross_target LoupeInjection /tmp/loupe-platform-tvos-injection
   run_step "tvOS LoupeInjector cross-build" build_tvos_cross_product LoupeInjector /tmp/loupe-platform-tvos-injector
+fi
+
+if can_build_platform_with_xcode LoupeKit "visionOS Simulator" && can_build_platform_with_xcode LoupeInjector "visionOS Simulator"; then
+  run_step "visionOS Simulator LoupeKit build" build_scheme LoupeKit "$VISIONOS_SIMULATOR_DESTINATION"
+  run_step "visionOS Simulator LoupeInjector build" build_scheme LoupeInjector "$VISIONOS_SIMULATOR_DESTINATION"
+else
+  echo "==> visionOS Simulator destinations unavailable; skipping visionOS platform build"
+fi
+
+if can_build_platform_with_xcode LoupeKit "watchOS Simulator" && can_build_platform_with_xcode LoupeInjector "watchOS Simulator"; then
+  run_step "watchOS Simulator LoupeKit build" build_scheme LoupeKit "$WATCHOS_SIMULATOR_DESTINATION"
+  run_step "watchOS Simulator LoupeInjector build" build_scheme LoupeInjector "$WATCHOS_SIMULATOR_DESTINATION"
+else
+  echo "==> watchOS Simulator destinations unavailable; skipping watchOS platform build"
 fi
 
 echo "platform build verification passed"

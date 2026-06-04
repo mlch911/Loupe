@@ -9,6 +9,8 @@ let package = Package(
         .iOS(.v15),
         .tvOS(.v15),
         .macOS(.v14),
+        .watchOS(.v8),
+        .visionOS(.v1),
     ],
     products: [
         .library(
@@ -27,10 +29,6 @@ let package = Package(
         .executable(
             name: "loupe",
             targets: ["LoupeCLI"]
-        ),
-        .executable(
-            name: "MacLoupeExample",
-            targets: ["MacLoupeExample"]
         ),
     ],
     targets: [
@@ -63,12 +61,6 @@ let package = Package(
         .executableTarget(
             name: "LoupeCLI",
             dependencies: ["LoupeCore", "LoupeHID", "LoupeCLIModel"]
-        ),
-        .executableTarget(
-            name: "MacLoupeExample",
-            dependencies: [],
-            path: "Examples/MacLoupeExample",
-            exclude: ["run-macos-e2e.sh"]
         ),
         .testTarget(
             name: "LoupeCoreTests",

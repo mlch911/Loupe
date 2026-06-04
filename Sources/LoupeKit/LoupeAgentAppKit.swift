@@ -1654,11 +1654,6 @@ private struct CapturedSnapshot {
     var viewsByRef: [String: NSView]
 }
 
-public struct LoupeDiagnosticError: Error, CustomStringConvertible {
-    public var message: String
-    public var description: String { message }
-}
-
 @MainActor
 private func currentAppearance() -> String {
     let name = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])

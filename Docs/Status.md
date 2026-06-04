@@ -57,9 +57,11 @@ It runs:
 - runtime injection smoke E2E
 - native HID and UIKit scenario E2E
 - bookmark app-style E2E
-- platform build checks for iOS, macOS, and tvOS support targets
+- platform build checks for iOS, macOS, tvOS, visionOS Simulator, and watchOS
+  Simulator targets
 - injected macOS AppKit runtime E2E
 - injected tvOS Simulator runtime and remote press E2E
+- injected watchOS Simulator registered-probe runtime E2E
 
 GitHub Actions uses the same command for the `Post-change E2E` required check.
 
@@ -82,10 +84,16 @@ clipping, and UIKit metadata.
 
 ## Current Limits
 
-- Runtime observation is covered by injected iOS Simulator, macOS AppKit, and
-  tvOS Simulator examples. iOS physical devices require a debug app that links
-  and embeds the dynamic `LoupeInjector` product and is selected by `--host`;
-  launch-time injection remains simulator-only.
+- Runtime observation is covered by injected iOS Simulator, macOS AppKit, tvOS
+  Simulator, and watchOS Simulator examples. visionOS currently has build
+  coverage for the UIKit-based runtime path, but no checked-in runtime E2E
+  example yet. watchOS uses a registered-probe backend: apps can expose SwiftUI
+  `.loupeProbe(...)`, `Loupe.registerProbe(...)`, or no-import
+  `dev.loupe.probe` nodes plus logs, metadata, defaults/flags, and runtime
+  identity. It does not yet do broad automatic WatchKit/SwiftUI element
+  discovery or runtime input actions. iOS physical devices require a debug app
+  that links and embeds the dynamic `LoupeInjector` product and is selected by
+  `--host`; launch-time injection remains simulator-only.
 - Native `UIAccessibility` container traversal is opt-in with
   `LOUPE_NATIVE_ACCESSIBILITY=1`; the default runtime path uses Loupe's
   view-derived accessibility tree.

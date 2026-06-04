@@ -39,6 +39,7 @@ Major in-progress areas:
   - CLI/platform tests
 - Platform examples:
   - `Examples/MacLoupeExample/main.swift`
+  - `Examples/MacLoupeExample/MacLoupeExample.xcodeproj`
   - `Examples/MacLoupeExample/run-macos-e2e.sh`
   - `Examples/LoupeTVExample/LoupeTVExample/TVViewController.swift`
   - `Examples/LoupeTVExample/run-tvos-runtime-e2e.sh`
@@ -66,15 +67,18 @@ The desired shape is:
   .loupeProbe("checkout.form.probe", label: "Checkout form")
   ```
 
-- Apps that do not import `LoupeKit` should use a zero-dependency helper
-  snippet that creates a tiny `UIViewRepresentable` or `NSViewRepresentable`
-  with only standard accessibility identifiers.
+- Apps that do not import `LoupeKit` should use a zero-dependency helper with a
+  local name such as `.localLoupeProbe(...)`. The helper creates a background
+  `UIViewRepresentable` or `NSViewRepresentable` with only standard
+  accessibility identifiers. Because it is attached with `background`, the
+  platform probe follows the SwiftUI region bounds.
 
 Current implementation:
 
 - Added `Sources/LoupeKit/LoupeSwiftUIProbe.swift`.
 - It exposes `View.loupeProbe(_ id: String, label: String? = nil)`.
-- The modifier uses `background` to attach a 1x1 platform probe view:
+- The modifier uses `background` to attach a platform probe view that follows
+  the SwiftUI region bounds:
   - iOS/tvOS: `UIViewRepresentable`
   - macOS: `NSViewRepresentable`
 - The platform view sets:
@@ -82,34 +86,52 @@ Current implementation:
   - accessibility label
   - `loupe.probe=true` metadata when `LoupeKit` is linked
 
-Important unresolved issue:
+Resolved distinction:
 
-- `Examples/LoupeExample/LoupeExample/ViewController.swift` currently calls
-  `.loupeProbe(...)` but does not import or link `LoupeKit` in the Xcode iOS
-  app target.
-- Physical-device Xcode build failed with:
-
-  ```text
-  value of type 'ModifiedContent<some View, AccessibilityAttachmentModifier>' has no member 'loupeProbe'
-  ```
+- `import LoupeKit` apps use public `.loupeProbe(...)`.
+- Injected/no-import examples use local `.localLoupeProbe(...)` helpers so the
+  fallback path is not confused with the public LoupeKit API.
 
 Chosen fixes:
 
 1. Keep injected examples dependency-free and use local zero-dependency probe
-   helpers when a SwiftUI anchor is needed.
+   helpers when a SwiftUI region frame is needed.
 2. Use bridge notifications for app-authored logs, metadata, reference
-   evidence, and lifetime probes.
+   evidence, lifetime probes, and no-import probe registration.
 3. For physical-device debug apps, link and embed dynamic `LoupeInjector`
    instead of importing `LoupeKit` and starting `LoupeServer` from app code.
 
+## watchOS And visionOS State
+
+- `Package.swift` declares watchOS and visionOS platforms.
+- visionOS Simulator builds now pass for `LoupeKit` and `LoupeInjector` after
+  avoiding `UIScreen.main` and using `UIWindowScene` bounds where needed.
+- watchOS Simulator builds now pass for `LoupeKit` and `LoupeInjector`, and
+  `LoupeInjectorStart` starts `LoupeServer` on watchOS.
+- watchOS runtime snapshots use a registered-probe backend instead of the
+  UIKit/AppKit view-tree walker. Apps can expose SwiftUI `.loupeProbe(...)`,
+  `Loupe.registerProbe(...)`, or no-import `dev.loupe.probe` nodes plus logs,
+  metadata, defaults/flags, and runtime identity.
+- `Examples/LoupeWatchExample/run-watchos-runtime-e2e.sh` verifies a
+  dependency-free SwiftUI watch app launched with injection. It captures
+  meaningful session-dashboard probes, accessibility export, view/accessibility
+  tree output, app-authored logs, network evidence, references, lifetime
+  probes, and defaults/flags. Broad automatic WatchKit/SwiftUI element
+  discovery and runtime input actions are still not implemented.
+
 ## Verification Already Completed Before SwiftUI Modifier Change
 
-These passed before replacing the inline probe views with `.loupeProbe(...)`:
+These passed before adding the dedicated local fallback probe helpers:
 
 ```bash
 swift test
 swift build --product loupe
-swift build --product MacLoupeExample
+xcodebuild \
+  -project Examples/MacLoupeExample/MacLoupeExample.xcodeproj \
+  -scheme MacLoupeExample \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  build
 git diff --check
 Examples/LoupeExample/run-native-scenarios.sh
 Examples/MacLoupeExample/run-macos-e2e.sh
@@ -120,7 +142,13 @@ scripts/verify-agent-work.sh
 After adding `LoupeSwiftUIProbe.swift`, these passed:
 
 ```bash
-swift build --product loupe --product MacLoupeExample
+swift build --product loupe --product LoupeInjector
+xcodebuild \
+  -project Examples/MacLoupeExample/MacLoupeExample.xcodeproj \
+  -scheme MacLoupeExample \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  build
 git diff --check
 ```
 
@@ -236,11 +264,18 @@ Current physical-device support conclusion:
 1. Re-run the verification matrix after any further runtime or example changes:
 
    ```bash
-   swift build --product loupe --product MacLoupeExample
+   swift build --product loupe --product LoupeInjector
+   xcodebuild \
+     -project Examples/MacLoupeExample/MacLoupeExample.xcodeproj \
+     -scheme MacLoupeExample \
+     -destination 'platform=macOS' \
+     -configuration Debug \
+     build
    swift test
    Examples/LoupeExample/run-native-scenarios.sh
    Examples/MacLoupeExample/run-macos-e2e.sh
    Examples/LoupeTVExample/run-tvos-runtime-e2e.sh
+   Examples/LoupeWatchExample/run-watchos-runtime-e2e.sh
    git diff --check
    ```
 

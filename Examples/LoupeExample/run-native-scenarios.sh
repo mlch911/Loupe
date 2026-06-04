@@ -436,6 +436,9 @@ assert_query example.fixtures.tab.nested /tmp/loupe-native-nested-tab-query.json
 ruby -rjson -e '
   probe = JSON.parse(File.read(ARGV.fetch(0))).fetch("node")
   abort "expected SwiftUI probe UIViewRepresentable class evidence" unless probe.dig("uiKit", "className") == "UIView"
+  frame = probe.fetch("frame")
+  abort "expected SwiftUI probe bounds width" unless frame.fetch("width").to_f > 100
+  abort "expected SwiftUI probe bounds height" unless frame.fetch("height").to_f > 80
   accessibility = JSON.parse(File.read(ARGV.fetch(1)))
   nodes = accessibility.fetch("nodes").values
   probe_ax = nodes.find { |node| node["testID"] == "example.fixtures.swiftui.probe" }

@@ -1,7 +1,7 @@
 import Foundation
 import LoupeCore
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import UIKit
 #if canImport(WebKit)
 import WebKit
@@ -32,8 +32,16 @@ public final class LoupeAgent {
         var nodes: [String: LoupeNode] = [:]
         var viewRefs: [ObjectIdentifier: String] = [:]
         var viewsByRef: [String: UIView] = [:]
+        #if os(visionOS)
+        let screenBounds = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.coordinateSpace.bounds }
+            .first ?? .zero
+        let screenScale: CGFloat = 1
+        #else
         let screen = UIScreen.main
         let screenBounds = screen.bounds
+        let screenScale = screen.scale
+        #endif
         let interfaceStyle = UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.keyWindow?.traitCollection.userInterfaceStyle }
             .first
@@ -44,7 +52,7 @@ public final class LoupeAgent {
                 width: finiteDouble(screenBounds.width.doubleValue) ?? 0,
                 height: finiteDouble(screenBounds.height.doubleValue) ?? 0
             ),
-            scale: finiteDouble(screen.scale.doubleValue) ?? 1,
+            scale: finiteDouble(screenScale.doubleValue) ?? 1,
             interfaceStyle: interfaceStyle
         )
 

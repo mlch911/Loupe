@@ -635,10 +635,9 @@ private func loupeLifetimeProbe(
 private final class DeviceActuationService: NSObject {}
 
 private extension View {
-    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+    func localLoupeProbe(_ id: String, label: String? = nil) -> some View {
         background {
             LoupeFallbackProbeView(id: id, label: label)
-                .frame(width: 1, height: 1)
         }
     }
 }
@@ -686,7 +685,7 @@ private struct MacSwiftUIFixtureView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mac.example.swiftui")
-        .loupeProbe("mac.example.swiftui.probe", label: "macOS SwiftUI probe")
+        .localLoupeProbe("mac.example.swiftui.probe", label: "macOS SwiftUI probe")
     }
 }
 

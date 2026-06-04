@@ -1,7 +1,7 @@
 import Foundation
 import LoupeCore
 
-#if canImport(Darwin)
+#if canImport(Darwin) && ((canImport(UIKit) && !os(watchOS)) || canImport(AppKit) || os(watchOS))
 import Darwin
 
 private enum LoupeSocketAddress {

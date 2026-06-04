@@ -1,10 +1,11 @@
 import Foundation
 import Testing
 import LoupeCore
-import LoupeKit
+@testable import LoupeKit
 
 #if canImport(AppKit) && !canImport(UIKit)
 import AppKit
+import SwiftUI
 #endif
 
 #if canImport(UIKit) || canImport(AppKit)
@@ -61,6 +62,74 @@ import AppKit
                 && evidence.label == "test fixture reference"
                 && evidence.metadata["screen"] == .string("platform")
         })
+    }
+
+    @MainActor
+    @Test func runtimeRegisteredProbesKeepFrameAndMetadataForProbeSnapshots() {
+        let runtime = LoupeRuntime.shared
+        let id = "platform.registered.probe"
+        runtime.unregisterProbe(id: id)
+        defer { runtime.unregisterProbe(id: id) }
+
+        Loupe.registerProbe(
+            id,
+            label: "Registered probe",
+            role: "button",
+            frame: LoupeRect(x: 4, y: 8, width: 44, height: 22),
+            isInteractive: true,
+            metadata: ["screen": .string("platform")]
+        )
+
+        let probe = runtime.registeredProbes().first { $0.id == id }
+
+        #expect(probe?.label == "Registered probe")
+        #expect(probe?.role == "button")
+        #expect(probe?.frame == LoupeRect(x: 4, y: 8, width: 44, height: 22))
+        #expect(probe?.isInteractive == true)
+        #expect(probe?.metadata["screen"] == .string("platform"))
+        #expect(probe?.metadata["loupe.probe"] == .bool(true))
+    }
+
+    @MainActor
+    @Test func runtimeProbeBridgeRegistersAndRemovesProbeWithoutImportingLoupeAPI() {
+        let runtime = LoupeRuntime.shared
+        runtime.activateBridge()
+        let id = "platform.notification.probe"
+        runtime.unregisterProbe(id: id)
+        defer { runtime.unregisterProbe(id: id) }
+
+        NotificationCenter.default.post(
+            name: .loupeProbe,
+            object: nil,
+            userInfo: [
+                "id": id,
+                "label": "Notification probe",
+                "role": "button",
+                "frame": [
+                    "x": 11,
+                    "y": 22,
+                    "width": 33,
+                    "height": 44,
+                ],
+                "isInteractive": true,
+                "metadata": ["screen": "platform"],
+            ]
+        )
+
+        let probe = runtime.registeredProbes().first { $0.id == id }
+        #expect(probe?.label == "Notification probe")
+        #expect(probe?.role == "button")
+        #expect(probe?.frame == LoupeRect(x: 11, y: 22, width: 33, height: 44))
+        #expect(probe?.isInteractive == true)
+        #expect(probe?.metadata["screen"] == .string("platform"))
+        #expect(probe?.metadata["loupe.probe"] == .bool(true))
+
+        NotificationCenter.default.post(
+            name: .loupeRemoveProbe,
+            object: nil,
+            userInfo: ["id": id]
+        )
+        #expect(runtime.registeredProbes().contains { $0.id == id } == false)
     }
 
     @MainActor
@@ -283,6 +352,29 @@ import AppKit
         #expect(sliderMutation.effective == .double(30))
         #expect(sliderMutation.changed == true)
     }
+
+    @MainActor
+    @Test func importedLoupeKitSwiftUIProbeAppearsInSnapshotWithMetadata() throws {
+        let fixture = ImportedLoupeSwiftUIProbeFixture()
+        defer { fixture.tearDown() }
+
+        let agent = LoupeAgent()
+        let snapshot = agent.captureSnapshot()
+        let probe = try #require(snapshot.nodes.values.first { $0.testID == fixture.probeTestID })
+
+        #expect(probe.uiKit?.className == "NSView")
+        #expect(probe.custom["loupe.probe"] == .bool(true))
+        let frame = try #require(probe.frame)
+        #expect(frame.width > 100)
+        #expect(frame.height > 80)
+
+        let accessibilityTree = agent.captureAccessibilityTree()
+        let match = try #require(LoupeAccessibilityTreeQuery.first(.testID(fixture.probeTestID), in: accessibilityTree))
+        let accessibilityNode = try #require(accessibilityTree.nodes[match.ref])
+
+        #expect(accessibilityNode.label == "Imported LoupeKit SwiftUI probe")
+        #expect(accessibilityNode.sourceRef == probe.ref)
+    }
 }
 
 @MainActor
@@ -386,6 +478,53 @@ private final class AppKitFixture {
     func tearDown() {
         window.orderOut(nil)
         window.close()
+    }
+}
+
+@MainActor
+private final class ImportedLoupeSwiftUIProbeFixture {
+    let probeTestID = "platform.importedSwiftUI.probe"
+
+    private let window: NSWindow
+
+    init() {
+        _ = NSApplication.shared
+
+        window = NSWindow(
+            contentRect: NSRect(x: 180, y: 180, width: 280, height: 160),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier("platform.importedSwiftUI.window")
+        window.title = "Imported SwiftUI Probe"
+
+        let host = NSHostingView(rootView: ImportedLoupeSwiftUIProbeView(probeTestID: probeTestID))
+        host.frame = NSRect(x: 0, y: 0, width: 280, height: 160)
+        host.identifier = NSUserInterfaceItemIdentifier("platform.importedSwiftUI.host")
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        host.layoutSubtreeIfNeeded()
+    }
+
+    func tearDown() {
+        window.orderOut(nil)
+        window.close()
+    }
+}
+
+private struct ImportedLoupeSwiftUIProbeView: View {
+    let probeTestID: String
+
+    var body: some View {
+        VStack {
+            Text("Imported SwiftUI Probe")
+                .accessibilityIdentifier("platform.importedSwiftUI.title")
+        }
+        .frame(width: 240, height: 120)
+        .accessibilityIdentifier("platform.importedSwiftUI.root")
+        .loupeProbe(probeTestID, label: "Imported LoupeKit SwiftUI probe")
     }
 }
 

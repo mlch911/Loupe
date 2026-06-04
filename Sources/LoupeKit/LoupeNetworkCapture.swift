@@ -1,8 +1,9 @@
 import Foundation
 import LoupeCore
+
+#if ((canImport(UIKit) && !os(watchOS)) || canImport(AppKit)) && canImport(ObjectiveC)
 import ObjectiveC
 
-#if canImport(UIKit) || canImport(AppKit)
 final class LoupeNetworkCaptureProtocol: URLProtocol {
     private static let handledKey = "dev.loupe.networkCapture.handled"
     private static let fixturePathPrefix = "/__loupe_network_fixture/"

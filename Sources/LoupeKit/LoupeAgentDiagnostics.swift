@@ -1,7 +1,7 @@
 import Foundation
 import LoupeCore
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import Security
 import UIKit
 
@@ -53,11 +53,6 @@ public extension LoupeAgent {
     func currentEnvironment() -> LoupeEnvironmentMutationResponse {
         LoupeEnvironmentMutationResponse(appearance: currentAppearance())
     }
-}
-
-public struct LoupeDiagnosticError: Error, CustomStringConvertible {
-    public var message: String
-    public var description: String { message }
 }
 
 @MainActor

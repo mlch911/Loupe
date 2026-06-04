@@ -1,49 +1,19 @@
 import Foundation
 import LoupeCore
 
-#if canImport(SwiftUI) && (canImport(UIKit) || canImport(AppKit))
+#if canImport(SwiftUI) && canImport(AppKit)
+import AppKit
 import SwiftUI
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 public extension View {
-    /// Adds a tiny platform view anchor that Loupe can capture as a stable `ui node`.
+    /// Adds an AppKit probe view that Loupe can capture as a stable `ui node`.
     func loupeProbe(_ id: String, label: String? = nil) -> some View {
         background {
             LoupeSwiftUIProbeRepresentable(id: id, label: label)
-                .frame(width: 1, height: 1)
         }
     }
 }
 
-#if canImport(UIKit)
-private struct LoupeSwiftUIProbeRepresentable: UIViewRepresentable {
-    var id: String
-    var label: String?
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.testID(id)
-        view.testProperty("loupe.probe", true)
-        view.isAccessibilityElement = true
-        view.accessibilityLabel = label ?? id
-        view.backgroundColor = .clear
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        uiView.testID(id)
-        uiView.testProperty("loupe.probe", true)
-        uiView.isAccessibilityElement = true
-        uiView.accessibilityLabel = label ?? id
-        uiView.backgroundColor = .clear
-    }
-}
-#elseif canImport(AppKit)
 private struct LoupeSwiftUIProbeRepresentable: NSViewRepresentable {
     var id: String
     var label: String?
@@ -70,5 +40,4 @@ private struct LoupeSwiftUIProbeRepresentable: NSViewRepresentable {
         nsView.layer?.backgroundColor = NSColor.clear.cgColor
     }
 }
-#endif
 #endif

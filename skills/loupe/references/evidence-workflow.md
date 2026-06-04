@@ -31,11 +31,18 @@ Use text or role flags for discovery, then switch to `testID` or `ref`.
 ## SwiftUI And Bridge Evidence
 
 For SwiftUI, prefer stable accessibility surfaces over private hierarchy
-assumptions. If the app imports `LoupeKit`, ask for `.loupeProbe(...)` on
-complex regions that need durable `ui node` anchors. If the app should not
-depend on `LoupeKit`, ask for an equivalent zero-dependency
-`UIViewRepresentable` or `NSViewRepresentable` modifier that sets a standard
-accessibility identifier.
+assumptions. If the app imports `LoupeKit`, ask for the public
+`.loupeProbe(...)` modifier on complex regions that need durable `ui node`
+targets with captured bounds. If the app should not depend on `LoupeKit`, ask
+for an equivalent zero-dependency `UIViewRepresentable` or
+`NSViewRepresentable` helper with a local name such as `.localLoupeProbe(...)`;
+it should be attached with `background` and set standard accessibility
+identifiers and labels only.
+
+On watchOS, there is no UIKit/AppKit view-tree walker. A no-import local
+SwiftUI helper should measure bounds with `GeometryReader` and post
+`dev.loupe.probe` / `dev.loupe.removeProbe`; injected Loupe registers those
+probes into the same runtime backend used by public `Loupe.registerProbe(...)`.
 
 For app diagnostics, use `Loupe.log("checkout_visible")` when importing
 `LoupeKit`. Without that import, post the bridge notification and read logs:

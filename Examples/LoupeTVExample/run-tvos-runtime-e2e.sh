@@ -327,6 +327,9 @@ ruby -rjson -e '
   swiftui_probe = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.swiftui.probe" }
   abort "missing tvOS SwiftUI probe view" unless swiftui_probe
   abort "expected tvOS SwiftUI probe UIViewRepresentable class evidence" unless swiftui_probe.dig("uiKit", "className") == "UIView"
+  swiftui_probe_frame = swiftui_probe.fetch("frame")
+  abort "expected tvOS SwiftUI probe bounds width" unless swiftui_probe_frame.fetch("width").to_f > 100
+  abort "expected tvOS SwiftUI probe bounds height" unless swiftui_probe_frame.fetch("height").to_f > 40
 
   list = JSON.parse(File.read(ARGV.fetch(4))).fetch("node")
   abort "expected UIScrollView list" unless list.dig("uiKit", "className") == "UIScrollView"
