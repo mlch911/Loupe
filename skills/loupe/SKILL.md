@@ -1,172 +1,67 @@
 ---
 name: loupe
-description: Use this skill when working with Loupe Apple-platform runtime automation, simulator injection, linked LoupeKit runtimes, view-tree inspection, accessibility tree querying, compact screen context, or Loupe CLI-driven platform actions.
+description: Use this skill when working with Loupe Apple-platform runtime automation, simulator injection, linked LoupeInjector runtimes, view-tree inspection, accessibility tree querying, compact screen context, or Loupe CLI-driven platform actions.
 ---
 
 # Loupe
 
 Use Loupe for Apple-platform runtime observation, diagnostics, CLI actions,
-mutation probes, and design QA. Keep full snapshots on disk during the task,
-send compact output to agents, and delete artifacts after use unless they are
-evidence, failure traces, or part of a before/after comparison.
+mutation probes, and design QA.
 
-## Rules
+## Core Rules
 
 - Use the installed `loupe`; resolve injector paths with `loupe injector-path`.
-- Loupe talks to the injected app server; no separate host daemon is needed.
-- Use accessibility for text discovery and action targets. Use the view tree for
-  layout, style, UIKit properties, mutation refs, and visual checks.
+- Loupe talks to the app's in-process Loupe server; no separate host daemon is
+  needed.
+- Keep full snapshots on disk during the task. Send compact output to agents by
+  default, then query or inspect specific refs on demand.
+- Keep attachment mode explicit:
+  - Simulator injection uses `--inject` and no app dependency.
+  - Physical-device debug runtimes link and embed the dynamic `LoupeInjector`
+    product. It depends on `LoupeKit` internally and starts Loupe automatically
+    when loaded.
+- Repository example apps should stay import-free when an injection path exists.
+  Do not add `import LoupeKit` to examples just to make a simulator workflow
+  pass.
 - Drive runtime E2E with Loupe CLI actions, not XCTest as the public harness.
-- Public simulator actions are `tap`, `swipe`, `drag`, `type`, and tvOS
-  `press`; prefer `testID`, `ref`, or coordinates over tap-by-text.
-- Artifacts are temporary. Use task-specific `/tmp` paths, clear old paths first,
-  and manually remove explicit `ui report` output or `--trace-dir` directories.
-  `loupe app cleanup` only prunes stale runtime records and old automatic traces.
+- Prefer `testID`, `ref`, or coordinates over tap-by-text.
 
-## Runtime
+## Reference Files
+
+Read only the file needed for the current task:
+
+- `references/runtime-modes.md`: simulator injection, physical-device
+  `LoupeInjector` setup, runtime selection, and launch troubleshooting.
+- `references/evidence-workflow.md`: reports, snapshots, queries, diagnostics,
+  SwiftUI probes, bridge notifications, object graphs, and leaks.
+- `references/actions-and-mutations.md`: tap/swipe/drag/type/press, trace
+  verification, scroll profiling, mutations, and design QA checks.
+
+## Default Workflow
+
+1. Identify the attachment mode: simulator injection, linked physical device, or
+   existing `--host`.
+2. Capture runtime evidence with `loupe ui report` or `loupe ui snapshot`.
+3. Use accessibility for discovery and action targets. Use the view tree for
+   layout, style, UIKit properties, mutation refs, and visual checks.
+4. Act through Loupe only when the platform supports it; preserve failed trace
+   paths until summarized or handed back.
+5. Verify with fresh snapshot/query/effective state, not command success alone.
+
+## Quick Commands
 
 ```bash
-xcrun simctl install booted /path/to/App.app
 loupe app launch --bundle-id com.example.App
-
 loupe app list
 loupe app use com.example.App
-loupe app use --host <runtime-host>
 loupe app current
-```
 
-For linked runtimes such as macOS examples, start the app normally and pass the
-runtime `--host`.
-
-Observation commands can use `--bundle-id` or `--host`. Simulator action
-commands do not accept `--bundle-id`; run
-`loupe app use <bundle-id> --udid <sim-udid>` first, or pass
-`--host <runtime-host> --udid <sim-udid>`. If multiple simulators are booted, do
-not use `--udid booted`; use the UDID from `loupe app current` or `loupe app list`.
-
-## Observe
-
-```bash
-REPORT=/tmp/loupe-checkout-report
+REPORT=/tmp/loupe-report
 rm -rf "$REPORT"
 loupe ui report --bundle-id com.example.App --output "$REPORT"
 loupe ui compact "$REPORT/snapshot.json"
-loupe ui screen "$REPORT/snapshot.json" --limit 80
-loupe ui tree "$REPORT/snapshot.json" --accessibility --depth 3
-loupe ui tree "$REPORT/snapshot.json" --view --depth 3
+loupe ui query "$REPORT/snapshot.json" --test-id target.id
 loupe ui node "$REPORT/snapshot.json" --test-id target.id
 ```
 
-`ui report` stores screenshot, snapshot, screen-map, accessibility,
-compact, audit, runtime, and summary files. Logs are in `runtime.json.logs`;
-newer CLI builds may also emit `logs.json`. Start broad, then query only the
-target:
-
-```bash
-loupe ui query "$REPORT/snapshot.json" --test-id target.id
-loupe ui node "$REPORT/snapshot.json" --test-id target.id --node-only
-loupe ui subtree "$REPORT/snapshot.json" --test-id target.container --depth 2
-```
-
-Prefer `--test-id` when available. Use `--ref` only within the same snapshot.
-Use text or role flags for discovery, then switch to `testID` or `ref`.
-
-For SwiftUI, prefer stable accessibility surfaces over private hierarchy
-assumptions. If the app imports `LoupeKit`, ask for `.loupeProbe(...)` on
-complex regions that need durable `ui node` anchors. If the app should not
-depend on `LoupeKit`, ask for an equivalent zero-dependency
-`UIViewRepresentable` or `NSViewRepresentable` modifier that sets a standard
-accessibility identifier. Treat direct SwiftUI mutation as unsupported unless
-the app exposes a flag/default/state hook.
-
-For app diagnostics, use `Loupe.log("checkout_visible")` when importing
-`LoupeKit`. Without that import, post the bridge notification and read logs
-explicitly when needed:
-
-```swift
-NotificationCenter.default.post(
-    name: Notification.Name("dev.loupe.log"),
-    object: nil,
-    userInfo: ["message": "checkout_visible"]
-)
-```
-
-```bash
-loupe debug logs --bundle-id com.example.App --output "$REPORT/logs.json"
-```
-
-Use `Notification.Name("dev.loupe.viewMetadata")` for scalar metadata on a
-UIKit view or stable `testID`, then verify with `loupe ui node`.
-Use `Loupe.recordReference(...)` or the `dev.loupe.reference` notification when
-the task needs ownership evidence, then answer owner questions with:
-
-```bash
-loupe debug object-graph DeviceActuationService --host <runtime-host> --output /tmp/loupe-reference-graph.json
-```
-
-The graph is app-authored reference evidence, not private heap traversal.
-Use `owners` to answer what points at a target, and cite `evidenceID`, `kind`,
-`label`, `metadata`, and `timestamp` when explaining the result.
-
-For runtime object diagnostics, keep the boundary clear:
-
-```bash
-loupe debug objects classes --matching DeviceActuationService --host <runtime-host> --output /tmp/loupe-object-classes.json
-loupe debug objects describe DeviceActuationService --host <runtime-host> --output /tmp/loupe-object-description.json
-loupe debug leaks --alive-only --host <runtime-host> --output /tmp/loupe-leaks.json
-```
-
-`debug objects` reads Objective-C runtime class metadata. `debug leaks` reads
-weak lifetime probes registered by the app with `Loupe.watchLifetime(...)`; it
-is not full private heap traversal.
-
-## Act
-
-```bash
-TRACE=/tmp/loupe-checkout-trace
-rm -rf "$TRACE"
-loupe act tap --test-id checkout.payButton --host <runtime-host> --udid <sim-udid> --trace-dir "$TRACE"
-loupe act tap --snapshot "$REPORT/snapshot.json" --ref n21 --udid <sim-udid>
-loupe act tap --x 201 --y 274 --udid <sim-udid> --width 438 --height 954
-loupe act swipe --from 219,760 --to 219,190 --host <runtime-host> --udid <sim-udid> --width 438 --height 954 --trace-dir "$TRACE"
-loupe act press select --host <runtime-host> --udid <tvos-sim-udid> --trace-dir "$TRACE"
-loupe debug scroll --test-id feed.list --delta 0,80 --host <runtime-host> --output /tmp/loupe-scroll-profile.json
-loupe debug trace summary "$TRACE"
-loupe debug trace diff "$TRACE/before-snapshot.json" "$TRACE/after-snapshot.json" --changed-only
-```
-
-Also use `act drag`, `act type`, `act press`, and `debug trace explore` when needed. Treat scroll
-with no offset or visible-frame change as failed unless `--no-verify-scroll` is
-intentional. Use `debug scroll --delta` or `--to-offset` for linked runtimes that
-can expose scroll state but do not have host HID scroll input. Preserve failed
-trace paths until summarized or handed back. Remove successful trace dirs unless
-a later diff/audit needs them. Action traces use
-`before-snapshot.json`/`after-snapshot.json`; `ui set-many --trace-dir` uses
-`prev-snapshot.json`/`next-snapshot.json`.
-
-## Mutate
-
-Mutations are developer-only probes. Prefer stable `testID`; use `ref` only
-within the same observed screen. Use `loupe ui mutations`, `loupe ui set`,
-`loupe ui set-many`, `loupe act wait value`, and `loupe ui reflect`. Use
-`--no-animate` when verification needs immediate state. Treat frame and Auto
-Layout mutations as probes until `loupe ui node` confirms the effective state.
-
-## Design QA
-
-For Figma, screenshot, or visual-reference work, capture a report, inspect
-anchors, run `loupe ui audit "$REPORT/snapshot.json"`, then act and diff. Use
-`loupe ui compare-design "$REPORT/snapshot.json" /path/to/design.json --limit 20`
-when fixture data exists. Reject wrong screen size, duplicated
-simulator chrome, scrolling fixed chrome, wrong scroll axis, bad key
-text/frame/color/corner metadata, untraceable routes, or unintended app state.
-For `compare-design`, match by `testID`, then role plus text, then geometry.
-
-## Debug
-
-```bash
-loupe doctor
-loupe injector-path
-loupe app launch --bundle-id <id> --inject
-loupe app cleanup --dry-run
-```
+For physical-device failures, first check `references/runtime-modes.md`.

@@ -25,6 +25,9 @@ public struct LoupeRuntimeLog: Codable, Equatable {
 public struct LoupeRuntimeIdentity: Codable, Equatable {
     public var launchID: String
     public var startedAt: Date
+    public var platform: String?
+    public var deviceIdentifier: String?
+    public var deviceName: String?
     public var bundleIdentifier: String?
     public var processIdentifier: Int32
     public var simulatorUDID: String?
@@ -33,6 +36,9 @@ public struct LoupeRuntimeIdentity: Codable, Equatable {
     public init(
         launchID: String = UUID().uuidString,
         startedAt: Date = Date(),
+        platform: String? = nil,
+        deviceIdentifier: String? = nil,
+        deviceName: String? = nil,
         bundleIdentifier: String? = nil,
         processIdentifier: Int32,
         simulatorUDID: String? = nil,
@@ -40,6 +46,9 @@ public struct LoupeRuntimeIdentity: Codable, Equatable {
     ) {
         self.launchID = launchID
         self.startedAt = startedAt
+        self.platform = platform
+        self.deviceIdentifier = deviceIdentifier
+        self.deviceName = deviceName
         self.bundleIdentifier = bundleIdentifier
         self.processIdentifier = processIdentifier
         self.simulatorUDID = simulatorUDID

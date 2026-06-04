@@ -63,7 +63,7 @@ extension LoupeCLI {
         case "debug":
             return debugUsage
         case "app launch":
-            return "Usage: loupe app launch --bundle-id <id> [--device <sim>|--udid <sim>] [--port <port>] [--env KEY=VALUE] [--timeout <seconds>]"
+            return "Usage: loupe app launch --bundle-id <id> [--device <sim|device>] [--inject|--linked] [--host <url>] [--port <port>] [--bind-host <ip>] [--env KEY=VALUE] [--timeout <seconds>]"
         case "app list":
             return "Usage: loupe app list [--json] [--timeout <seconds>]"
         case "app use":

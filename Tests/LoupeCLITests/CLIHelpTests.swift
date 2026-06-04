@@ -46,7 +46,7 @@ import Testing
     @Test func groupedCommandUsageFirstLinesStayStable() throws {
         let expectedUsage: [String: String] = [
             "app": "Usage: loupe app <subcommand>",
-            "app launch": "Usage: loupe app launch --bundle-id <id> [--device <sim>|--udid <sim>] [--port <port>] [--env KEY=VALUE] [--timeout <seconds>]",
+            "app launch": "Usage: loupe app launch --bundle-id <id> [--device <sim|device>] [--inject|--linked] [--host <url>] [--port <port>] [--bind-host <ip>] [--env KEY=VALUE] [--timeout <seconds>]",
             "app list": "Usage: loupe app list [--json] [--timeout <seconds>]",
             "app use": "Usage: loupe app use <bundle-id> | --bundle-id <id> | --host <url> [--udid <sim>]",
             "app current": "Usage: loupe app current [--json] [--timeout <seconds>]",

@@ -7,6 +7,9 @@ struct LaunchOptions {
     var device: String
     var dylibPath: String?
     var environment: [String: String]
+    var host: URL?
+    var port: UInt16?
+    var bindHost: String?
     var shouldInject: Bool
     var timeout: TimeInterval
 
@@ -15,7 +18,11 @@ struct LaunchOptions {
         var device = "booted"
         var dylibPath: String?
         var environment: [String: String] = [:]
+        var host: URL?
+        var port: UInt16?
+        var bindHost: String?
         var shouldInject = false
+        var launchMode: String?
         var timeout: TimeInterval = 15
         var index = 0
 
@@ -28,10 +35,38 @@ struct LaunchOptions {
             case "--device", "--udid":
                 device = try Self.value(after: argument, in: arguments, index: &index)
             case "--dylib":
+                if launchMode == "linked" {
+                    throw CLIError("--dylib cannot be combined with --linked or --no-inject")
+                }
                 dylibPath = try Self.value(after: argument, in: arguments, index: &index)
                 shouldInject = true
+                launchMode = "inject"
             case "--inject":
+                if launchMode == "linked" {
+                    throw CLIError("--inject cannot be combined with --linked or --no-inject")
+                }
                 shouldInject = true
+                launchMode = "inject"
+            case "--linked", "--no-inject":
+                if launchMode == "inject" {
+                    throw CLIError("\(argument) cannot be combined with --inject or --dylib")
+                }
+                shouldInject = false
+                launchMode = "linked"
+            case "--host":
+                let raw = try Self.value(after: argument, in: arguments, index: &index)
+                guard let url = URL(string: raw) else {
+                    throw CLIError("Invalid --host URL: \(raw)")
+                }
+                host = url
+            case "--port":
+                let raw = try Self.value(after: argument, in: arguments, index: &index)
+                guard let value = UInt16(raw), value > 0 else {
+                    throw CLIError("--port must be a valid TCP port")
+                }
+                port = value
+            case "--bind-host":
+                bindHost = try Self.value(after: argument, in: arguments, index: &index)
             case "--env":
                 let pair = try Self.value(after: argument, in: arguments, index: &index)
                 let pieces = pair.split(separator: "=", maxSplits: 1).map(String.init)
@@ -56,6 +91,9 @@ struct LaunchOptions {
         self.device = device
         self.dylibPath = dylibPath
         self.environment = environment
+        self.host = host
+        self.port = port
+        self.bindHost = bindHost
         self.shouldInject = shouldInject
         guard timeout > 0 else {
             throw CLIError("--timeout must be greater than 0")

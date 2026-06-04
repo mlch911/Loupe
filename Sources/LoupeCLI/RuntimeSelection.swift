@@ -18,9 +18,12 @@ extension LoupeCLI {
         let record: LoupeRuntimeHostRecord
         if let host = options.host {
             let state = try await fetchRuntimeState(host: host, timeout: options.timeout)
-            let udid = state.identity.simulatorUDID ?? options.udid ?? "unknown"
-            let bundleID = state.identity.bundleIdentifier ?? options.bundleID ?? "unknown"
-            record = LoupeRuntimeHostRecord(udid: udid, bundleID: bundleID, host: host.absoluteString, updatedAt: Date())
+            record = runtimeHostRecord(
+                state: state,
+                host: host,
+                fallbackDeviceID: options.udid ?? "unknown",
+                fallbackBundleID: options.bundleID ?? "unknown"
+            )
         } else if let bundleID = options.bundleID {
             record = try await runtimeHostRecord(bundleID: bundleID, udid: options.udid, timeout: options.timeout)
         } else {
@@ -90,8 +93,11 @@ extension LoupeCLI {
     }
 
     static func runtimeState(_ state: LoupeRuntimeState, matches record: LoupeRuntimeHostRecord) -> Bool {
-        guard state.identity.simulatorUDID == record.udid else {
-            return false
+        let runtimeDeviceID = state.identity.deviceIdentifier ?? state.identity.simulatorUDID
+        if let runtimeDeviceID, !runtimeDeviceID.isEmpty, record.udid != "unknown" {
+            guard runtimeDeviceID == record.udid else {
+                return false
+            }
         }
         guard let bundleIdentifier = state.identity.bundleIdentifier else {
             return true
@@ -118,11 +124,21 @@ extension LoupeCLI {
         }
 
         if let udid {
-            let resolvedUDID = try resolvedBackendUDID(udid)
-            if let record = try loadRuntimeHost(udid: resolvedUDID),
-               let url = URL(string: record.host),
-               !record.host.isEmpty {
-                return url
+            let resolvedUDID: String?
+            do {
+                resolvedUDID = try resolvedBackendUDID(udid)
+            } catch {
+                guard udid == "booted" else {
+                    throw error
+                }
+                resolvedUDID = nil
+            }
+            if let resolvedUDID {
+                if let record = try loadRuntimeHost(udid: resolvedUDID),
+                   let url = URL(string: record.host),
+                   !record.host.isEmpty {
+                    return url
+                }
             }
         }
 
@@ -173,10 +189,17 @@ extension LoupeCLI {
     }
 
     static func storeRuntimeHost(udid: String, bundleID: String, host: URL) throws {
+        try storeRuntimeHost(
+            LoupeRuntimeHostRecord(udid: udid, bundleID: bundleID, host: host.absoluteString, updatedAt: Date())
+        )
+    }
+
+    static func storeRuntimeHost(_ record: LoupeRuntimeHostRecord) throws {
         let directory = runtimeHostDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let record = LoupeRuntimeHostRecord(udid: udid, bundleID: bundleID, host: host.absoluteString, updatedAt: Date())
-        try writeJSON(record, to: runtimeHostRecordURL(udid: udid, bundleID: bundleID))
+        var updatedRecord = record
+        updatedRecord.updatedAt = Date()
+        try writeJSON(updatedRecord, to: runtimeHostRecordURL(udid: updatedRecord.udid, bundleID: updatedRecord.bundleID))
     }
 
     static func loadRuntimeHost(udid: String) throws -> LoupeRuntimeHostRecord? {
@@ -248,5 +271,21 @@ extension LoupeCLI {
         return value.unicodeScalars.map { scalar in
             allowed.contains(scalar) ? String(scalar) : "_"
         }.joined()
+    }
+
+    static func runtimeHostRecord(
+        state: LoupeRuntimeState,
+        host: URL,
+        fallbackDeviceID: String,
+        fallbackBundleID: String
+    ) -> LoupeRuntimeHostRecord {
+        LoupeRuntimeHostRecord(
+            udid: state.identity.deviceIdentifier
+                ?? state.identity.simulatorUDID
+                ?? fallbackDeviceID,
+            bundleID: state.identity.bundleIdentifier ?? fallbackBundleID,
+            host: host.absoluteString,
+            updatedAt: Date()
+        )
     }
 }

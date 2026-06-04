@@ -24,10 +24,14 @@ public final class LoupeRuntime {
 
     private init() {
         let environment = ProcessInfo.processInfo.environment
+        let simulatorUDID = environment["SIMULATOR_UDID"]
         identity = LoupeRuntimeIdentity(
+            platform: Self.platformName,
+            deviceIdentifier: environment["LOUPE_DEVICE_ID"] ?? simulatorUDID,
+            deviceName: Self.deviceName,
             bundleIdentifier: Bundle.main.bundleIdentifier,
             processIdentifier: ProcessInfo.processInfo.processIdentifier,
-            simulatorUDID: environment["SIMULATOR_UDID"],
+            simulatorUDID: simulatorUDID,
             simulatorName: environment["SIMULATOR_DEVICE_NAME"]
         )
     }
@@ -155,8 +159,36 @@ public final class LoupeRuntime {
             name: .loupeReference,
             object: nil
         )
+        center.addObserver(
+            self,
+            selector: #selector(receiveLifetimeProbeNotification(_:)),
+            name: .loupeLifetimeProbe,
+            object: nil
+        )
         LoupeNetworkCaptureProtocol.install()
         didInstallBridge = true
+    }
+
+    private static var platformName: String {
+        #if os(iOS)
+        return "iOS"
+        #elseif os(tvOS)
+        return "tvOS"
+        #elseif os(macOS)
+        return "macOS"
+        #else
+        return "Apple"
+        #endif
+    }
+
+    private static var deviceName: String? {
+        #if canImport(UIKit)
+        UIDevice.current.name
+        #elseif canImport(AppKit)
+        Host.current().localizedName
+        #else
+        nil
+        #endif
     }
 
     @objc private nonisolated func receiveLogNotification(_ notification: Notification) {
@@ -251,6 +283,34 @@ public final class LoupeRuntime {
                 }
             }
         }
+    }
+
+    @objc private nonisolated func receiveLifetimeProbeNotification(_ notification: Notification) {
+        guard let payload = LoupeLifetimeProbeNotificationPayload(notification: notification) else {
+            return
+        }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.watchLifetimePayload(payload)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self, payload] in
+                MainActor.assumeIsolated {
+                    self?.watchLifetimePayload(payload)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func watchLifetimePayload(_ payload: LoupeLifetimeProbeNotificationPayload) {
+        watchLifetime(
+            payload.object,
+            name: payload.name,
+            expectedDeallocated: payload.expectedDeallocated,
+            metadata: payload.metadata
+        )
     }
 
 }
@@ -374,7 +434,11 @@ private func metadataPayload(from userInfo: [AnyHashable: Any]) -> [String: Loup
     }
 
     var payload: [String: LoupeMetadataValue] = [:]
-    let reservedKeys: Set<String> = ["level", "message", "metadata", "view", "testID", "id", "owner", "target", "kind", "label"]
+    let reservedKeys: Set<String> = [
+        "level", "message", "metadata", "view", "testID", "id",
+        "owner", "target", "kind", "label",
+        "object", "name", "expectedDeallocated",
+    ]
     for (rawKey, rawValue) in userInfo {
         guard let key = rawKey as? String, !reservedKeys.contains(key), let value = loupeMetadataValue(from: rawValue) else {
             continue
@@ -497,11 +561,37 @@ private struct LoupeReferenceNotificationPayload: Sendable {
     }
 }
 
+private struct LoupeLifetimeProbeNotificationPayload: @unchecked Sendable {
+    var object: AnyObject
+    var name: String?
+    var expectedDeallocated: Bool
+    var metadata: [String: LoupeMetadataValue]
+
+    init?(notification: Notification) {
+        let userInfo = notification.userInfo ?? [:]
+        guard let object = (notification.object as? AnyObject) ?? (userInfo["object"] as? AnyObject) else {
+            return nil
+        }
+
+        self.object = object
+        self.name = nonEmpty(userInfo["name"] as? String)
+        if let value = userInfo["expectedDeallocated"] as? Bool {
+            expectedDeallocated = value
+        } else if let value = userInfo["expectedDeallocated"] as? NSNumber {
+            expectedDeallocated = value.boolValue
+        } else {
+            expectedDeallocated = true
+        }
+        metadata = metadataPayload(from: userInfo)
+    }
+}
+
 public extension Notification.Name {
     static let loupeLog = Notification.Name("dev.loupe.log")
     static let loupeViewMetadata = Notification.Name("dev.loupe.viewMetadata")
     static let loupeNetwork = Notification.Name("dev.loupe.network")
     static let loupeReference = Notification.Name("dev.loupe.reference")
+    static let loupeLifetimeProbe = Notification.Name("dev.loupe.lifetimeProbe")
 }
 
 #endif

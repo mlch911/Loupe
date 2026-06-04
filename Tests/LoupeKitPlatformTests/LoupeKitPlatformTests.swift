@@ -116,6 +116,30 @@ import AppKit
         #expect(aliveProbe?.isAlive == true)
         #expect(releasedProbe?.isAlive == false)
     }
+
+    @MainActor
+    @Test func lifetimeProbeBridgeRecordsObjectWithoutImportingLoupeAPI() {
+        let runtime = LoupeRuntime.shared
+        runtime.activateBridge()
+        let object = NSObject()
+
+        NotificationCenter.default.post(
+            name: .loupeLifetimeProbe,
+            object: object,
+            userInfo: [
+                "name": "notification lifetime fixture",
+                "expectedDeallocated": true,
+                "metadata": ["screen": "platform"]
+            ]
+        )
+
+        #expect(runtime.runtimeLifetimeProbes().probes.contains { probe in
+            probe.name == "notification lifetime fixture"
+                && probe.objectType == "NSObject"
+                && probe.isAlive
+                && probe.metadata["screen"] == .string("platform")
+        })
+    }
 }
 #endif
 

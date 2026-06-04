@@ -66,7 +66,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "MacLoupeExample",
-            dependencies: ["LoupeCore", "LoupeKit"],
+            dependencies: [],
             path: "Examples/MacLoupeExample",
             exclude: ["run-macos-e2e.sh"]
         ),

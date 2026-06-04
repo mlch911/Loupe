@@ -1,8 +1,8 @@
 import AppKit
-import LoupeCore
-import LoupeKit
 import Security
 import SwiftUI
+
+private let loupeDefaultPort: UInt16 = 8765
 
 @main
 enum MacLoupeExample {
@@ -19,7 +19,6 @@ enum MacLoupeExample {
 
 @MainActor
 private final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var server: LoupeServer?
     private var window: NSWindow?
     private let deviceActuationService = DeviceActuationService()
     private let statusLabel = NSTextField(labelWithString: "Ready")
@@ -28,24 +27,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastErrorRouteValue = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        startLoupeServer()
         buildWindow()
         publishRuntimeFixtures()
         startFlagMonitor()
-    }
-
-    private func startLoupeServer() {
-        let port = UInt16(ProcessInfo.processInfo.environment["LOUPE_PORT"] ?? "")
-            ?? LoupeServer.defaultPort
-        let server = LoupeServer()
-        do {
-            try server.start(port: port)
-            self.server = server
-            Loupe.log("mac_example_server_started", metadata: ["port": .int(Int(port))])
-        } catch {
-            fputs("MacLoupeExample failed to start LoupeServer: \(error)\n", stderr)
-            NSApp.terminate(nil)
-        }
     }
 
     private func buildWindow() {
@@ -407,53 +391,52 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         lastNewNavValue = UserDefaults.standard.bool(forKey: "mac-new-nav")
         lastErrorRouteValue = UserDefaults.standard.bool(forKey: "mac-error-route")
 
-        Loupe.log(
+        loupeLog(
             "mac_example_visible",
             metadata: [
-                "screen": .string("workbench"),
-                "platform": .string("macOS"),
+                "screen": "workbench",
+                "platform": "macOS",
             ]
         )
-        Loupe.log(
+        loupeLog(
             "mac_example_empty_feed",
             metadata: [
-                "screen": .string("feed"),
-                "reason": .string("api_returned_empty_items"),
-                "flag": .string("mac-empty-feed"),
+                "screen": "feed",
+                "reason": "api_returned_empty_items",
+                "flag": "mac-empty-feed",
             ]
         )
         triggerNetworkFixtureRequests()
-        Loupe.recordReference(
+        loupeReference(
             owner: "MacWorkbenchController",
             target: "DeviceActuationService",
             kind: "strong",
             label: "fixture service reference",
-            metadata: ["screen": .string("workbench")]
+            metadata: ["screen": "workbench"]
         )
-        Loupe.recordReference(
+        loupeReference(
             owner: "MacLegacyFlowCoordinator",
             target: "DeviceActuationService",
             kind: "weak",
             label: "legacy flow service observer",
-            metadata: ["screen": .string("workbench")]
+            metadata: ["screen": "workbench"]
         )
-        Loupe.watchLifetime(
+        loupeLifetimeProbe(
             deviceActuationService,
             name: "DeviceActuationService",
             expectedDeallocated: true,
             metadata: [
-                "owner": .string("MacWorkbenchController"),
-                "screen": .string("workbench"),
+                "owner": "MacWorkbenchController",
+                "screen": "workbench",
             ]
         )
         upsertKeychainFixture()
     }
 
     private func triggerNetworkFixtureRequests() {
-        LoupeRuntime.shared.activateBridge()
         let session = URLSession(configuration: .default)
         let port = UInt16(ProcessInfo.processInfo.environment["LOUPE_PORT"] ?? "")
-            ?? LoupeServer.defaultPort
+            ?? loupeDefaultPort
         let baseURL = "http://127.0.0.1:\(port)/__loupe_network_fixture/macos"
         [
             "\(baseURL)/workbench",
@@ -469,22 +452,22 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshStatus() {
         statusLabel.stringValue = "Snapshot refreshed"
-        Loupe.log("mac_example_refresh_tapped", metadata: ["screen": .string("workbench")])
+        loupeLog("mac_example_refresh_tapped", metadata: ["screen": "workbench"])
     }
 
     @objc private func openDetailRoute() {
         window?.contentView = makeDetailView()
-        Loupe.log("mac_example_detail_route", metadata: ["screen": .string("detail")])
+        loupeLog("mac_example_detail_route", metadata: ["screen": "detail"])
     }
 
     @objc private func openLongListRoute() {
         window?.contentView = makeLongListView()
-        Loupe.log("mac_example_long_list_route", metadata: ["screen": .string("longList")])
+        loupeLog("mac_example_long_list_route", metadata: ["screen": "longList"])
     }
 
     @objc private func showWorkbenchRoute() {
         window?.contentView = makeWorkbenchView()
-        Loupe.log("mac_example_workbench_route", metadata: ["screen": .string("workbench")])
+        loupeLog("mac_example_workbench_route", metadata: ["screen": "workbench"])
     }
 
     @objc private func dismissErrorRoute() {
@@ -507,10 +490,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             lastNewNavValue = newNavValue
             if newNavValue {
                 statusLabel.stringValue = "New nav active"
-                Loupe.log("mac_example_new_nav_flow", metadata: ["screen": .string("workbench")])
+                loupeLog("mac_example_new_nav_flow", metadata: ["screen": "workbench"])
             } else {
                 statusLabel.stringValue = "Legacy flow active"
-                Loupe.log("mac_example_legacy_flow", metadata: ["screen": .string("workbench")])
+                loupeLog("mac_example_legacy_flow", metadata: ["screen": "workbench"])
             }
         }
 
@@ -518,7 +501,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(false, forKey: "mac-logout")
             clearKeychainFixture()
             statusLabel.stringValue = "Logged out"
-            Loupe.log("mac_example_logout_cleared_keychain", metadata: ["screen": .string("workbench")])
+            loupeLog("mac_example_logout_cleared_keychain", metadata: ["screen": "workbench"])
         }
 
         let errorRouteValue = UserDefaults.standard.bool(forKey: "mac-error-route")
@@ -526,12 +509,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             lastErrorRouteValue = errorRouteValue
             if errorRouteValue {
                 window?.contentView = makeErrorView()
-                Loupe.log(
+                loupeLog(
                     "mac_example_error_route",
                     metadata: [
-                        "screen": .string("error"),
-                        "reason": .string("feed_service_unavailable"),
-                        "source": .string("mac-error-route"),
+                        "screen": "error",
+                        "reason": "feed_service_unavailable",
+                        "source": "mac-error-route",
                     ]
                 )
             } else {
@@ -567,8 +550,123 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+private extension NSView {
+    func testID(_ id: String) {
+        identifier = NSUserInterfaceItemIdentifier(id)
+        setAccessibilityIdentifier(id)
+    }
+
+    func testProperty(_ key: String, _ value: String) {
+        guard let id = identifier?.rawValue else {
+            return
+        }
+        loupeViewMetadata(testID: id, metadata: [key: value])
+    }
+
+    func testProperty(_ key: String, _ value: Bool) {
+        guard let id = identifier?.rawValue else {
+            return
+        }
+        loupeViewMetadata(testID: id, metadata: [key: value])
+    }
+}
+
+private func loupeLog(_ message: String, metadata: [String: Any] = [:]) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.log"),
+        object: nil,
+        userInfo: [
+            "level": "info",
+            "message": message,
+            "metadata": metadata,
+        ]
+    )
+}
+
+private func loupeViewMetadata(testID: String, metadata: [String: Any]) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.viewMetadata"),
+        object: nil,
+        userInfo: [
+            "testID": testID,
+            "metadata": metadata,
+        ]
+    )
+}
+
+private func loupeReference(
+    owner: String,
+    target: String,
+    kind: String,
+    label: String,
+    metadata: [String: Any] = [:]
+) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.reference"),
+        object: nil,
+        userInfo: [
+            "owner": owner,
+            "target": target,
+            "kind": kind,
+            "label": label,
+            "metadata": metadata,
+        ]
+    )
+}
+
+private func loupeLifetimeProbe(
+    _ object: AnyObject,
+    name: String,
+    expectedDeallocated: Bool,
+    metadata: [String: Any] = [:]
+) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.lifetimeProbe"),
+        object: object,
+        userInfo: [
+            "name": name,
+            "expectedDeallocated": expectedDeallocated,
+            "metadata": metadata,
+        ]
+    )
+}
+
 @objc(DeviceActuationService)
 private final class DeviceActuationService: NSObject {}
+
+private extension View {
+    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+        background {
+            LoupeFallbackProbeView(id: id, label: label)
+                .frame(width: 1, height: 1)
+        }
+    }
+}
+
+private struct LoupeFallbackProbeView: NSViewRepresentable {
+    let id: String
+    let label: String?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.identifier = NSUserInterfaceItemIdentifier(id)
+        view.setAccessibilityElement(true)
+        view.setAccessibilityLabel(label ?? id)
+        view.setAccessibilityRole(.group)
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.identifier = NSUserInterfaceItemIdentifier(id)
+        nsView.setAccessibilityElement(true)
+        nsView.setAccessibilityLabel(label ?? id)
+        nsView.setAccessibilityRole(.group)
+        nsView.wantsLayer = true
+        nsView.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+}
 
 private struct MacSwiftUIFixtureView: View {
     @State private var enabled = true

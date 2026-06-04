@@ -23,7 +23,7 @@ fixtures.
 ```text
 loupe CLI
   - launches and injects simulator apps where injection is supported
-  - talks to linked LoupeKit runtimes for platforms such as macOS
+  - talks to linked Loupe runtime servers where direct injection is unavailable
   - records runtime host mappings
   - stores snapshots, reports, screenshots, logs, and traces
   - resolves selectors and dispatches host-side simulator input

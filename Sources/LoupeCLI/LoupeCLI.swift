@@ -672,24 +672,13 @@ struct LoupeCLI {
     static func start(_ arguments: [String]) async throws {
         var launchArguments: [String] = []
         var index = 0
-        var hasInject = false
+        var hasLaunchMode = false
 
         while index < arguments.count {
             let argument = arguments[index]
             switch argument {
-            case "--port":
-                let valueIndex = index + 1
-                guard valueIndex < arguments.count else {
-                    throw CLIError("--port requires a value")
-                }
-                let rawPort = arguments[valueIndex]
-                guard let port = Int(rawPort), (1...65535).contains(port) else {
-                    throw CLIError("--port must be a valid TCP port")
-                }
-                launchArguments.append(contentsOf: ["--env", "LOUPE_PORT=\(port)"])
-                index = valueIndex
-            case "--inject":
-                hasInject = true
+            case "--inject", "--linked", "--no-inject", "--dylib":
+                hasLaunchMode = true
                 launchArguments.append(argument)
             default:
                 launchArguments.append(argument)
@@ -697,7 +686,7 @@ struct LoupeCLI {
             index += 1
         }
 
-        if !hasInject {
+        if !hasLaunchMode {
             launchArguments.append("--inject")
         }
         try await launch(launchArguments)
@@ -706,28 +695,107 @@ struct LoupeCLI {
     static func launch(_ arguments: [String]) async throws {
         let options = try LaunchOptions(arguments)
         var environment = options.environment
-        var runtimeUDID: String?
-        var runtimeHost: URL?
+        if let port = options.port {
+            environment["LOUPE_PORT"] = String(port)
+        }
+        if let bindHost = options.bindHost {
+            environment["LOUPE_BIND_HOST"] = bindHost
+        }
+
+        let resolvedSimulatorDevice: String?
+        do {
+            resolvedSimulatorDevice = try resolveSimulatorUDID(options.device)
+        } catch {
+            if options.shouldInject {
+                throw error
+            }
+            guard options.device != "booted" else {
+                throw CLIError(
+                    "No booted simulator matched `booted`. For a physical device, pass --device <device-id> with --linked."
+                )
+            }
+            resolvedSimulatorDevice = nil
+        }
 
         if options.shouldInject, let dylibPath = try resolvedInjectorPath(explicitPath: options.dylibPath) {
             environment["DYLD_INSERT_LIBRARIES"] = dylibPath
-            let udid = try resolveSimulatorUDID(options.device)
+            guard let udid = resolvedSimulatorDevice else {
+                throw CLIError("Loupe injection requires an iOS/tvOS simulator device. Use --linked for LoupeInjector-linked physical-device apps.")
+            }
             let port = try resolvedLoupePort(for: udid, environment: environment)
             let host = URL(string: "http://127.0.0.1:\(port)")!
             try validateLaunchPort(host: host, expectedUDID: udid, expectedBundleID: options.bundleID)
             environment["LOUPE_PORT"] = String(port)
-            runtimeUDID = udid
-            runtimeHost = host
             try terminateAppIfRunning(
                 device: udid,
                 bundleID: options.bundleID,
                 timeout: simctlTerminateTimeout(launchTimeout: options.timeout)
             )
+
+            try runSimctlLaunch(
+                device: udid,
+                bundleID: options.bundleID,
+                environment: environment,
+                timeout: options.timeout
+            )
+
+            try await waitForRuntime(host: host, expectedUDID: udid, timeout: options.timeout)
+            try storeRuntimeHost(udid: udid, bundleID: options.bundleID, host: host)
+            try storeCurrentRuntimeHost(
+                LoupeRuntimeHostRecord(udid: udid, bundleID: options.bundleID, host: host.absoluteString, updatedAt: Date())
+            )
+            print("loupe host: \(host.absoluteString)")
+            return
         }
 
-        let request = SimctlLaunchRequest(
+        if let resolvedSimulatorDevice {
+            try runSimctlLaunch(
+                device: resolvedSimulatorDevice,
+                bundleID: options.bundleID,
+                environment: environment,
+                timeout: options.timeout
+            )
+            if let host = options.host {
+                try await storeLinkedRuntimeAfterLaunch(
+                    host: host,
+                    expectedDeviceID: resolvedSimulatorDevice,
+                    fallbackDeviceID: resolvedSimulatorDevice,
+                    fallbackBundleID: options.bundleID,
+                    timeout: options.timeout
+                )
+            }
+            return
+        }
+
+        environment["LOUPE_DEVICE_ID"] = environment["LOUPE_DEVICE_ID"] ?? options.device
+        try runDevicectlLaunch(
             device: options.device,
             bundleID: options.bundleID,
+            environment: environment,
+            timeout: options.timeout
+        )
+        if let host = options.host {
+            try await storeLinkedRuntimeAfterLaunch(
+                host: host,
+                expectedDeviceID: environment["LOUPE_DEVICE_ID"],
+                fallbackDeviceID: options.device,
+                fallbackBundleID: options.bundleID,
+                timeout: options.timeout
+            )
+        } else {
+            print("launched linked app on \(options.device)")
+        }
+    }
+
+    private static func runSimctlLaunch(
+        device: String,
+        bundleID: String,
+        environment: [String: String],
+        timeout: TimeInterval
+    ) throws {
+        let request = SimctlLaunchRequest(
+            device: device,
+            bundleID: bundleID,
             environment: environment
         )
 
@@ -736,14 +804,107 @@ struct LoupeCLI {
         process.arguments = SimctlCommandBuilder.launchArguments(for: request)
         process.environment = SimctlCommandBuilder.launchEnvironment(for: request)
 
-        try run(process, label: "simctl launch", timeout: options.timeout)
+        try run(process, label: "simctl launch", timeout: timeout)
+    }
 
-        if let runtimeUDID, let runtimeHost {
-            try await waitForRuntime(host: runtimeHost, expectedUDID: runtimeUDID, timeout: options.timeout)
-            try storeRuntimeHost(udid: runtimeUDID, bundleID: options.bundleID, host: runtimeHost)
-            try storeCurrentRuntimeHost(LoupeRuntimeHostRecord(udid: runtimeUDID, bundleID: options.bundleID, host: runtimeHost.absoluteString, updatedAt: Date()))
-            print("loupe host: \(runtimeHost.absoluteString)")
+    private static func runDevicectlLaunch(
+        device: String,
+        bundleID: String,
+        environment: [String: String],
+        timeout: TimeInterval
+    ) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        var arguments = [
+            "devicectl",
+            "device",
+            "process",
+            "launch",
+            "--device",
+            device,
+            "--terminate-existing",
+        ]
+        if !environment.isEmpty {
+            let data = try JSONSerialization.data(
+                withJSONObject: environment,
+                options: [.sortedKeys]
+            )
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw CLIError("Could not encode devicectl environment")
+            }
+            arguments.append(contentsOf: ["--environment-variables", json])
         }
+        arguments.append(bundleID)
+        process.arguments = arguments
+
+        try runDevicectlProcess(process, timeout: timeout)
+    }
+
+    private static func runDevicectlProcess(_ process: Process, timeout: TimeInterval) throws {
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            semaphore.signal()
+        }
+        try process.run()
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            throw CLIError("devicectl launch timed out after \(format(timeout))s")
+        }
+
+        let output = String(decoding: outputPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let error = String(decoding: errorPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        guard process.terminationStatus == 0 else {
+            let details = [error, output]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            var message = "devicectl launch exited with status \(process.terminationStatus)"
+            if !details.isEmpty {
+                message += ": \(details)"
+            }
+            if details.contains("CoreDeviceService was unable to locate")
+                || details.contains("The specified device was not found")
+                || details.contains("pairingState: unsupported")
+            {
+                message += "\nHint: this device is not available through CoreDevice/devicectl. For older iOS devices, install and launch a LoupeInjector-linked debug app from Xcode, then select it with `loupe app use --host <runtime-host>`."
+            }
+            if details.contains("Locked")
+                || details.contains("could not be, unlocked")
+                || details.contains("Unable to launch")
+            {
+                message += "\nHint: unlock the physical device and keep it awake, then retry `loupe app launch --linked`."
+            }
+            throw CLIError(message)
+        }
+    }
+
+    private static func storeLinkedRuntimeAfterLaunch(
+        host: URL,
+        expectedDeviceID: String?,
+        fallbackDeviceID: String,
+        fallbackBundleID: String,
+        timeout: TimeInterval
+    ) async throws {
+        try await waitForRuntimeHost(
+            host: host,
+            expectedDeviceID: expectedDeviceID,
+            timeout: timeout
+        )
+        let state = try await fetchRuntimeState(host: host, timeout: min(1, timeout))
+        let record = runtimeHostRecord(
+            state: state,
+            host: host,
+            fallbackDeviceID: fallbackDeviceID,
+            fallbackBundleID: fallbackBundleID
+        )
+        try storeRuntimeHost(record)
+        try storeCurrentRuntimeHost(record)
+        print("loupe host: \(host.absoluteString)")
     }
 
     private static func injectorPath(_ arguments: [String]) throws {
@@ -2117,13 +2278,14 @@ struct LoupeCLI {
     static func validateRuntimeIdentity(host: URL, expectedUDID: String, timeout: TimeInterval = 5) async throws {
         let expected = try resolvedBackendUDID(expectedUDID)
         let state = try await fetchRuntimeState(host: host, timeout: timeout)
-        guard let actual = state.identity.simulatorUDID, !actual.isEmpty else {
-            throw CLIError("Loupe runtime did not report SIMULATOR_UDID; cannot validate --udid \(expected)")
+        let actual = state.identity.deviceIdentifier ?? state.identity.simulatorUDID
+        guard let actual, !actual.isEmpty else {
+            throw CLIError("Loupe runtime did not report a simulator or device identifier; cannot validate --udid \(expected)")
         }
         guard actual == expected else {
             let bundle = state.identity.bundleIdentifier ?? "unknown-bundle"
             throw CLIError(
-                "Loupe runtime at \(host.absoluteString) is \(bundle) on simulator \(actual), not requested --udid \(expected)"
+                "Loupe runtime at \(host.absoluteString) is \(bundle) on device \(actual), not requested --udid \(expected)"
             )
         }
     }
@@ -2139,6 +2301,28 @@ struct LoupeCLI {
         repeat {
             do {
                 try await validateRuntimeIdentity(host: host, expectedUDID: expectedUDID, timeout: min(1, timeout))
+                return
+            } catch {
+                lastError = error
+                try await Task.sleep(nanoseconds: 200_000_000)
+            }
+        } while Date() < deadline
+
+        throw CLIError("Timed out waiting for Loupe runtime at \(host.absoluteString): \(lastError.map(String.init(describing:)) ?? "no response")")
+    }
+
+    private static func waitForRuntimeHost(host: URL, expectedDeviceID: String?, timeout: TimeInterval) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastError: Error?
+
+        repeat {
+            do {
+                let state = try await fetchRuntimeState(host: host, timeout: min(1, timeout))
+                if let expectedDeviceID,
+                   let actual = state.identity.deviceIdentifier ?? state.identity.simulatorUDID,
+                   actual != expectedDeviceID {
+                    throw CLIError("Loupe runtime at \(host.absoluteString) is device \(actual), not requested device \(expectedDeviceID)")
+                }
                 return
             } catch {
                 lastError = error

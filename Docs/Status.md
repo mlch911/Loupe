@@ -3,7 +3,7 @@
 Last verified: 2026-06-03.
 
 Loupe is a runtime diagnostic and E2E harness for Apple-platform apps. The
-current product surface is the `loupe` CLI plus injected or linked LoupeKit
+current product surface is the `loupe` CLI plus injected or LoupeInjector-linked
 runtime servers.
 
 ## Current Capabilities
@@ -22,11 +22,11 @@ runtime servers.
 - Dispatch simulator-visible `tap`, `swipe`, `drag`, `type`, and tvOS remote
   `press` through Loupe's native host-side action backend where the simulator
   platform supports it.
-- Dispatch `tap --backend runtime` against linked runtimes to activate
-  selector-addressed UI controls such as AppKit `NSButton` when simulator HID is
+- Dispatch `tap --backend runtime` against runtime-backed targets to activate
+  selector-addressed UI controls such as AppKit `NSButton` when native HID is
   not the right backend.
 - Profile scroll offset changes through simulator gesture traces or runtime
-  offset probes for linked/runtime platform examples.
+  offset probes for runtime platform examples.
 - Resolve action targets through the accessibility tree first, then fall back to
   the view tree when needed.
 - Save action traces with before/after snapshots, accessibility trees, logs,
@@ -58,8 +58,8 @@ It runs:
 - native HID and UIKit scenario E2E
 - bookmark app-style E2E
 - platform build checks for iOS, macOS, and tvOS support targets
-- linked macOS AppKit runtime E2E
-- tvOS Simulator runtime and remote press E2E
+- injected macOS AppKit runtime E2E
+- injected tvOS Simulator runtime and remote press E2E
 
 GitHub Actions uses the same command for the `Post-change E2E` required check.
 
@@ -82,8 +82,10 @@ clipping, and UIKit metadata.
 
 ## Current Limits
 
-- Runtime observation is covered by iOS Simulator injection plus linked macOS
-  AppKit and tvOS Simulator examples; physical devices are out of scope.
+- Runtime observation is covered by injected iOS Simulator, macOS AppKit, and
+  tvOS Simulator examples. iOS physical devices require a debug app that links
+  and embeds the dynamic `LoupeInjector` product and is selected by `--host`;
+  launch-time injection remains simulator-only.
 - Native `UIAccessibility` container traversal is opt-in with
   `LOUPE_NATIVE_ACCESSIBILITY=1`; the default runtime path uses Loupe's
   view-derived accessibility tree.

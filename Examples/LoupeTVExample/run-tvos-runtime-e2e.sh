@@ -60,6 +60,22 @@ run_with_timeout 120 xcrun simctl bootstatus "$DEVICE" -b >/tmp/loupe-tvos-boots
 }
 
 swift build --product loupe
+xcodebuild \
+  -scheme LoupeInjector \
+  -destination 'generic/platform=tvOS Simulator' \
+  -configuration Debug \
+  build >/tmp/loupe-tvos-injector-build.log
+
+export LOUPE_INJECTOR_PATH="$(
+  find "$HOME/Library/Developer/Xcode/DerivedData" \
+    -path '*Debug-appletvsimulator/PackageFrameworks/LoupeInjector.framework/LoupeInjector' \
+    -print0 | xargs -0 ls -t 2>/dev/null | head -1 || true
+)"
+if [[ -z "$LOUPE_INJECTOR_PATH" ]]; then
+  echo "error: could not find tvOS Simulator LoupeInjector; see /tmp/loupe-tvos-injector-build.log" >&2
+  exit 1
+fi
+
 rm -rf "$DERIVED_DATA"
 xcodebuild \
   -project Examples/LoupeTVExample/LoupeTVExample.xcodeproj \
@@ -78,7 +94,18 @@ fi
 
 xcrun simctl terminate "$DEVICE" dev.loupe.tvos-example >/dev/null 2>&1 || true
 run_with_timeout 30 xcrun simctl install "$DEVICE" "$APP_PATH"
-SIMCTL_CHILD_LOUPE_PORT="$PORT" xcrun simctl launch "$DEVICE" dev.loupe.tvos-example >/tmp/loupe-tvos-launch.log
+LAUNCH_OUTPUT="$(.build/debug/loupe app launch \
+  --device "$DEVICE" \
+  --bundle-id dev.loupe.tvos-example \
+  --inject \
+  --port "$PORT" \
+  --timeout 30)"
+HOST="$(awk '/^loupe host: / { print $3 }' <<<"$LAUNCH_OUTPUT" | tail -1)"
+if [[ -z "$HOST" ]]; then
+  echo "error: loupe app launch did not report a runtime host" >&2
+  echo "$LAUNCH_OUTPUT" >&2
+  exit 1
+fi
 cleanup() {
   xcrun simctl terminate "$DEVICE" dev.loupe.tvos-example >/dev/null 2>&1 || true
 }
@@ -168,8 +195,22 @@ done
 .build/debug/loupe ui node "$SNAPSHOT_PATH" --test-id tv.example.collection > "$INSPECT_LIST_PATH"
 .build/debug/loupe ui node "$SNAPSHOT_PATH" --test-id tv.example.emptyFeed > "$INSPECT_EMPTY_PATH"
 .build/debug/loupe ui accessibility --host "$HOST" --timeout 10 --output "$ACCESSIBILITY_PATH" >/dev/null
-.build/debug/loupe ui tree "$SNAPSHOT_PATH" --view --depth 10 > "$VIEW_TREE_PATH"
-.build/debug/loupe ui tree "$SNAPSHOT_PATH" --accessibility --depth 10 > "$ACCESSIBILITY_TREE_PATH"
+for _ in {1..20}; do
+  .build/debug/loupe ui tree "$SNAPSHOT_PATH" --view --depth 30 > "$VIEW_TREE_PATH"
+  if grep -q 'tv.example.collection' "$VIEW_TREE_PATH" && grep -q 'tv.example.swiftui.probe' "$VIEW_TREE_PATH"; then
+    break
+  fi
+  .build/debug/loupe ui snapshot --host "$HOST" --timeout 10 --output "$SNAPSHOT_PATH" >/dev/null
+  sleep 0.25
+done
+for _ in {1..20}; do
+  .build/debug/loupe ui tree "$SNAPSHOT_PATH" --accessibility --depth 30 > "$ACCESSIBILITY_TREE_PATH"
+  if grep -q 'tv.example.refresh' "$ACCESSIBILITY_TREE_PATH" && grep -q 'tv.example.swiftui.probe' "$ACCESSIBILITY_TREE_PATH"; then
+    break
+  fi
+  .build/debug/loupe ui snapshot --host "$HOST" --timeout 10 --output "$SNAPSHOT_PATH" >/dev/null
+  sleep 0.25
+done
 .build/debug/loupe debug logs --host "$HOST" --output "$LOGS_PATH" >/dev/null
 for _ in {1..40}; do
   .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null

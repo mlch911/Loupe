@@ -44,15 +44,25 @@ loupe skills install
 
 ## Environment
 
-Loupe currently supports injected iOS Simulator apps plus linked LoupeKit
-runtimes for macOS AppKit apps and tvOS Simulator apps. The command interface is
-organized around targets and capabilities so platform support can expand without
-turning every platform feature into a new top-level command.
+Loupe has two attachment modes:
+
+- Simulator: no app changes. `loupe app launch` injects Loupe into iOS/tvOS
+  Simulator apps at launch.
+- Physical device: link and embed the dynamic `LoupeInjector` product only in a
+  debug/development build. It starts Loupe automatically when the library loads.
+  Do not include Loupe in App Store release builds.
+
+The command interface is organized around targets and capabilities so platform
+support can expand without turning every platform feature into a new top-level
+command.
 
 Requirements:
 
 - macOS 14 or later.
 - Xcode with the needed iOS and tvOS Simulator runtimes installed.
+- For physical iOS devices: a debug build with `LoupeInjector` linked and
+  embedded, Developer Mode, CoreDevice/`devicectl` availability, and Mac/device
+  network reachability to the Loupe server port.
 
 Xcode and simulator versions can affect runtime injection, native HID input, and
 platform-specific runtime behavior.
@@ -60,6 +70,9 @@ platform-specific runtime behavior.
 Loupe chooses an available localhost port for injected apps and records the
 runtime. Use `--bundle-id`, `--udid`, or `loupe app use <bundle-id>` to select
 the target app instead of hard-coding a host port.
+
+Physical-device support opens a development HTTP server inside the app. Keep it
+out of release builds.
 
 ## Quick Start
 
@@ -77,6 +90,26 @@ loupe app list
 loupe app use com.example.App
 loupe app current
 ```
+
+For physical-device debugging, add the dynamic `LoupeInjector` SPM product to a
+debug-only app target with Link and Embed & Sign enabled; then launch and record
+the linked runtime:
+
+```bash
+loupe app launch \
+  --bundle-id com.example.DeviceApp \
+  --device <physical-device-id> \
+  --linked \
+  --host http://<device-ip>:8765 \
+  --port 8765 \
+  --bind-host 0.0.0.0
+
+loupe app info --bundle-id com.example.DeviceApp
+loupe ui snapshot --bundle-id com.example.DeviceApp --output /tmp/device-app.json
+```
+
+On physical devices, `ui` and `debug` commands talk to the linked runtime over
+HTTP. Simulator HID actions remain simulator-only.
 
 The public CLI keeps four stable groups. Older flat or overlapping commands are
 not part of the supported interface:
@@ -103,6 +136,30 @@ defaults/flags/keychain metadata, reference evidence, and action traces. Use
 Xcode tooling to build and launch the app; use Loupe to answer what is actually
 on screen, what runtime state the app exposed, what changed after an action, and
 why a visible behavior failed.
+
+## Import Versus Inject
+
+Simulator apps do not need a Loupe dependency:
+
+```bash
+loupe app launch --bundle-id com.example.App --inject
+```
+
+Physical-device apps need a debug-only Loupe dependency:
+
+1. Add the Swift package product `LoupeInjector` to the app's Debug target.
+2. Keep it as a dynamic framework and set it to Embed & Sign.
+3. Keep `LD_RUNPATH_SEARCH_PATHS` including `@executable_path/Frameworks`.
+4. Exclude the dependency from App Store release builds.
+
+Do not call `LoupeServer.start()` from the app for this path.
+`LoupeInjectionBootstrap` runs when the dynamic library loads and calls
+`LoupeInjectorStart`, which activates the bridge and starts `LoupeServer` with
+`LOUPE_PORT` and `LOUPE_BIND_HOST`.
+
+For local-network inspection, launch with
+`--linked --bind-host 0.0.0.0 --host http://<device-ip>:<port>`. Do not use
+`--inject` for physical devices.
 
 ## Inspect Runtime UI
 

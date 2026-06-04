@@ -1,4 +1,6 @@
 @testable import LoupeCLI
+import Foundation
+import LoupeCore
 import Testing
 
 @Suite struct LaunchOptionsTests {
@@ -9,6 +11,75 @@ import Testing
         ])
 
         #expect(options.device == "SIM-UDID")
+    }
+
+    @Test func linkedLaunchParsesPhysicalDeviceRuntimeOptions() throws {
+        let options = try LaunchOptions([
+            "--bundle-id", "dev.loupe.readingnow",
+            "--device", "DEVICE-1",
+            "--linked",
+            "--host", "http://192.168.1.25:8765",
+            "--port", "8765",
+            "--bind-host", "0.0.0.0",
+        ])
+
+        #expect(options.shouldInject == false)
+        #expect(options.device == "DEVICE-1")
+        #expect(options.host?.absoluteString == "http://192.168.1.25:8765")
+        #expect(options.port == 8765)
+        #expect(options.bindHost == "0.0.0.0")
+    }
+
+    @Test func linkedLaunchRejectsInjectionModeMixing() {
+        #expect(throws: Error.self) {
+            _ = try LaunchOptions([
+                "--bundle-id", "dev.loupe.readingnow",
+                "--linked",
+                "--inject",
+            ])
+        }
+    }
+
+    @Test func linkedRuntimeRecordUsesDeviceIdentifierWhenSimulatorUDIDIsAbsent() {
+        let state = LoupeRuntimeState(
+            identity: LoupeRuntimeIdentity(
+                platform: "iOS",
+                deviceIdentifier: "DEVICE-1",
+                deviceName: "iPhone",
+                bundleIdentifier: "dev.loupe.readingnow",
+                processIdentifier: 42
+            )
+        )
+        let host = URL(string: "http://192.168.1.25:8765")!
+
+        let record = LoupeCLI.runtimeHostRecord(
+            state: state,
+            host: host,
+            fallbackDeviceID: "fallback-device",
+            fallbackBundleID: "fallback.bundle"
+        )
+
+        #expect(record.udid == "DEVICE-1")
+        #expect(record.bundleID == "dev.loupe.readingnow")
+        #expect(LoupeCLI.runtimeState(state, matches: record))
+    }
+
+    @Test func linkedRuntimeMatchCanFallBackToBundleWhenDeviceIdentifierIsUnknown() {
+        let state = LoupeRuntimeState(
+            identity: LoupeRuntimeIdentity(
+                platform: "iOS",
+                bundleIdentifier: "dev.loupe.readingnow",
+                processIdentifier: 42
+            )
+        )
+        let record = LoupeRuntimeHostRecord(
+            udid: "DEVICE-1",
+            bundleID: "dev.loupe.readingnow",
+            host: "http://192.168.1.25:8765",
+            updatedAt: Date()
+        )
+
+        #expect(LoupeCLI.runtimeState(state, matches: record))
     }
 
     @Test func bootedResolutionPrefersIPhoneWhenMultiplePlatformsAreBooted() throws {

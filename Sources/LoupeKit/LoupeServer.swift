@@ -4,6 +4,39 @@ import LoupeCore
 #if canImport(Darwin)
 import Darwin
 
+private enum LoupeSocketAddress {
+    case ipv4(sockaddr_in)
+    case ipv6(sockaddr_in6)
+
+    var family: Int32 {
+        switch self {
+        case .ipv4:
+            return AF_INET
+        case .ipv6:
+            return AF_INET6
+        }
+    }
+
+    func withSockaddr<Result>(
+        _ body: (UnsafePointer<sockaddr>, socklen_t) throws -> Result
+    ) rethrows -> Result {
+        switch self {
+        case var .ipv4(address):
+            return try withUnsafePointer(to: &address) { pointer in
+                try pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                    try body(sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        case var .ipv6(address):
+            return try withUnsafePointer(to: &address) { pointer in
+                try pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                    try body(sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in6>.size))
+                }
+            }
+        }
+    }
+}
+
 public final class LoupeServer: @unchecked Sendable {
     public static let defaultPort: UInt16 = 8765
 
@@ -12,10 +45,14 @@ public final class LoupeServer: @unchecked Sendable {
 
     public init() {}
 
-    public func start(port: UInt16 = LoupeServer.defaultPort) throws {
+    public func start(
+        port: UInt16 = LoupeServer.defaultPort,
+        bindHost: String = "127.0.0.1"
+    ) throws {
         stop()
 
-        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        let socketAddress = try Self.socketAddress(bindHost: bindHost, port: port)
+        let fd = Darwin.socket(socketAddress.family, SOCK_STREAM, 0)
         guard fd >= 0 else {
             throw LoupeServerError.socketFailed(errno)
         }
@@ -29,16 +66,19 @@ public final class LoupeServer: @unchecked Sendable {
             socklen_t(MemoryLayout<Int32>.size)
         )
 
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = port.bigEndian
-        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        if socketAddress.family == AF_INET6 {
+            var v6Only: Int32 = 0
+            Darwin.setsockopt(
+                fd,
+                IPPROTO_IPV6,
+                IPV6_V6ONLY,
+                &v6Only,
+                socklen_t(MemoryLayout<Int32>.size)
+            )
+        }
 
-        let bindResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                Darwin.bind(fd, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
+        let bindResult = socketAddress.withSockaddr { sockaddrPointer, length in
+            Darwin.bind(fd, sockaddrPointer, length)
         }
 
         guard bindResult == 0 else {
@@ -60,6 +100,29 @@ public final class LoupeServer: @unchecked Sendable {
         queue.async { [weak self] in
             self?.acceptLoop(socketFD: fd)
         }
+    }
+
+    private static func socketAddress(bindHost: String, port: UInt16) throws -> LoupeSocketAddress {
+        if bindHost == "0.0.0.0" || bindHost.contains(":") {
+            var address = sockaddr_in6()
+            address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = port.bigEndian
+            let host = bindHost == "0.0.0.0" ? "::" : bindHost
+            guard inet_pton(AF_INET6, host, &address.sin6_addr) == 1 else {
+                throw LoupeServerError.invalidBindHost(bindHost)
+            }
+            return .ipv6(address)
+        }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        guard inet_pton(AF_INET, bindHost, &address.sin_addr) == 1 else {
+            throw LoupeServerError.invalidBindHost(bindHost)
+        }
+        return .ipv4(address)
     }
 
     public func stop() {
@@ -493,6 +556,7 @@ public enum LoupeServerError: Error, Equatable {
     case socketFailed(Int32)
     case bindFailed(Int32)
     case listenFailed(Int32)
+    case invalidBindHost(String)
 }
 
 private final class ResponseBox: @unchecked Sendable {

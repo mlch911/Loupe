@@ -1,8 +1,8 @@
 import UIKit
-import LoupeCore
-import LoupeKit
 import Security
 import SwiftUI
+
+private let loupeDefaultPort: UInt16 = 8765
 
 final class TVViewController: UIViewController {
     private let statusLabel = UILabel()
@@ -363,19 +363,19 @@ final class TVViewController: UIViewController {
         UserDefaults.standard.set(true, forKey: "tv-empty-feed")
         UserDefaults.standard.set(false, forKey: "tv-error-route")
 
-        Loupe.log(
+        loupeLog(
             "tv_example_visible",
             metadata: [
-                "screen": .string("workbench"),
-                "platform": .string("tvOS"),
+                "screen": "workbench",
+                "platform": "tvOS",
             ]
         )
-        Loupe.log(
+        loupeLog(
             "tv_example_empty_feed",
             metadata: [
-                "screen": .string("feed"),
-                "reason": .string("api_returned_empty_items"),
-                "flag": .string("tv-empty-feed"),
+                "screen": "feed",
+                "reason": "api_returned_empty_items",
+                "flag": "tv-empty-feed",
             ]
         )
         NotificationCenter.default.post(
@@ -389,37 +389,36 @@ final class TVViewController: UIViewController {
             ]
         )
         triggerNetworkFixtureRequests()
-        Loupe.recordReference(
+        loupeReference(
             owner: "TVWorkbenchController",
             target: "DeviceActuationService",
             kind: "strong",
             label: "fixture service reference",
-            metadata: ["screen": .string("workbench")]
+            metadata: ["screen": "workbench"]
         )
-        Loupe.recordReference(
+        loupeReference(
             owner: "TVLegacyFlowCoordinator",
             target: "DeviceActuationService",
             kind: "weak",
             label: "legacy flow service observer",
-            metadata: ["screen": .string("workbench")]
+            metadata: ["screen": "workbench"]
         )
-        Loupe.watchLifetime(
+        loupeLifetimeProbe(
             deviceActuationService,
             name: "DeviceActuationService",
             expectedDeallocated: true,
             metadata: [
-                "owner": .string("TVWorkbenchController"),
-                "screen": .string("workbench"),
+                "owner": "TVWorkbenchController",
+                "screen": "workbench",
             ]
         )
         upsertKeychainFixture()
     }
 
     private func triggerNetworkFixtureRequests() {
-        LoupeRuntime.shared.activateBridge()
         let session = URLSession(configuration: .default)
         let port = UInt16(ProcessInfo.processInfo.environment["LOUPE_PORT"] ?? "")
-            ?? LoupeServer.defaultPort
+            ?? loupeDefaultPort
         let baseURL = "http://127.0.0.1:\(port)/__loupe_network_fixture/tvos"
         [
             "\(baseURL)/workbench",
@@ -435,32 +434,24 @@ final class TVViewController: UIViewController {
 
     @objc private func refreshStatus() {
         statusLabel.text = "Snapshot refreshed"
-        NotificationCenter.default.post(
-            name: Notification.Name("dev.loupe.log"),
-            object: nil,
-            userInfo: [
-                "level": "info",
-                "message": "tv_example_refresh_triggered",
-                "metadata": ["screen": "workbench"],
-            ]
-        )
+        loupeLog("tv_example_refresh_triggered", metadata: ["screen": "workbench"])
     }
 
     @objc private func logout() {
         deleteKeychainFixture()
         statusLabel.text = "Logged out"
-        Loupe.log("tv_example_logout_cleared_keychain", metadata: ["screen": .string("workbench")])
+        loupeLog("tv_example_logout_cleared_keychain", metadata: ["screen": "workbench"])
     }
 
     @objc private func openLegacyFlow() {
         if UserDefaults.standard.bool(forKey: "tv-error-route") {
             buildErrorRouteView()
-            Loupe.log(
+            loupeLog(
                 "tv_example_error_route",
                 metadata: [
-                    "screen": .string("error"),
-                    "reason": .string("feed_service_unavailable"),
-                    "source": .string("tv-error-route"),
+                    "screen": "error",
+                    "reason": "feed_service_unavailable",
+                    "source": "tv-error-route",
                 ]
             )
             return
@@ -468,10 +459,10 @@ final class TVViewController: UIViewController {
         let newNavEnabled = UserDefaults.standard.bool(forKey: "tv-new-nav")
         if newNavEnabled {
             statusLabel.text = "New nav active"
-            Loupe.log("tv_example_new_nav_flow", metadata: ["screen": .string("workbench")])
+            loupeLog("tv_example_new_nav_flow", metadata: ["screen": "workbench"])
         } else {
             statusLabel.text = "Legacy flow active"
-            Loupe.log("tv_example_legacy_flow", metadata: ["screen": .string("workbench")])
+            loupeLog("tv_example_legacy_flow", metadata: ["screen": "workbench"])
         }
     }
 
@@ -483,7 +474,7 @@ final class TVViewController: UIViewController {
             rowPrefix: "tv.example.detail.row",
             rows: 18
         )
-        Loupe.log("tv_example_detail_route", metadata: ["screen": .string("detail")])
+        loupeLog("tv_example_detail_route", metadata: ["screen": "detail"])
     }
 
     @objc private func openLongListRoute() {
@@ -494,12 +485,12 @@ final class TVViewController: UIViewController {
             rowPrefix: "tv.example.longList.row",
             rows: 42
         )
-        Loupe.log("tv_example_long_list_route", metadata: ["screen": .string("longList")])
+        loupeLog("tv_example_long_list_route", metadata: ["screen": "longList"])
     }
 
     @objc private func showWorkbenchRoute() {
         buildView()
-        Loupe.log("tv_example_workbench_route", metadata: ["screen": .string("workbench")])
+        loupeLog("tv_example_workbench_route", metadata: ["screen": "workbench"])
     }
 
     @objc private func dismissErrorRoute() {
@@ -534,8 +525,87 @@ final class TVViewController: UIViewController {
     }
 }
 
+private func loupeLog(_ message: String, metadata: [String: Any] = [:]) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.log"),
+        object: nil,
+        userInfo: [
+            "level": "info",
+            "message": message,
+            "metadata": metadata,
+        ]
+    )
+}
+
+private func loupeReference(
+    owner: String,
+    target: String,
+    kind: String,
+    label: String,
+    metadata: [String: Any] = [:]
+) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.reference"),
+        object: nil,
+        userInfo: [
+            "owner": owner,
+            "target": target,
+            "kind": kind,
+            "label": label,
+            "metadata": metadata,
+        ]
+    )
+}
+
+private func loupeLifetimeProbe(
+    _ object: AnyObject,
+    name: String,
+    expectedDeallocated: Bool,
+    metadata: [String: Any] = [:]
+) {
+    NotificationCenter.default.post(
+        name: Notification.Name("dev.loupe.lifetimeProbe"),
+        object: object,
+        userInfo: [
+            "name": name,
+            "expectedDeallocated": expectedDeallocated,
+            "metadata": metadata,
+        ]
+    )
+}
+
 @objc(DeviceActuationService)
 private final class DeviceActuationService: NSObject {}
+
+private extension View {
+    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+        background {
+            LoupeFallbackProbeView(id: id, label: label)
+                .frame(width: 1, height: 1)
+        }
+    }
+}
+
+private struct LoupeFallbackProbeView: UIViewRepresentable {
+    let id: String
+    let label: String?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.accessibilityIdentifier = id
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = label ?? id
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        uiView.accessibilityIdentifier = id
+        uiView.isAccessibilityElement = true
+        uiView.accessibilityLabel = label ?? id
+        uiView.backgroundColor = .clear
+    }
+}
 
 private struct TVSwiftUIFixtureView: View {
     @State private var enabled = true

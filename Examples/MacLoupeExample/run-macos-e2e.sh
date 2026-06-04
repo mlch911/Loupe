@@ -7,7 +7,16 @@ HOST="http://127.0.0.1:${PORT}"
 
 cd "$ROOT_DIR"
 
-swift build --product loupe --product MacLoupeExample
+swift build --product loupe --product LoupeInjector --product MacLoupeExample
+INJECTOR_PATH="$(
+  find .build \
+    -path '*debug/libLoupeInjector.dylib' \
+    -print0 | xargs -0 ls -t 2>/dev/null | head -1 || true
+)"
+if [[ -z "$INJECTOR_PATH" ]]; then
+  echo "error: could not find macOS LoupeInjector dylib" >&2
+  exit 1
+fi
 
 APP_LOG="/tmp/loupe-macos-example.log"
 SNAPSHOT_PATH="/tmp/loupe-macos-snapshot.json"
@@ -58,7 +67,7 @@ LONG_LIST_BACK_TRACE_DIR="/tmp/loupe-macos-long-list-back-trace"
 rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$LOGS_PATH" "$ROUTE_LOGS_PATH" "$NEW_NAV_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$OBJECT_GRAPH_PATH" "$OBJECT_CLASSES_PATH" "$OBJECT_DESCRIPTION_PATH" "$LEAKS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$LOGOUT_FLAG_SET_PATH" "$EMPTY_FLAG_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$KEYCHAIN_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$PERF_PATH" "$DETAIL_SCROLL_PATH" "$LONG_LIST_SCROLL_PATH" "$MUTATION_PATH" "$INSPECT_PATH" "$INSPECT_TITLE_PATH" "$INSPECT_EMPTY_PATH" "$QUERY_PATH" "$DETAIL_SNAPSHOT_PATH" "$LONG_LIST_SNAPSHOT_PATH"
 rm -rf "$DETAIL_TRACE_DIR" "$DETAIL_BACK_TRACE_DIR" "$LONG_LIST_TRACE_DIR" "$LONG_LIST_BACK_TRACE_DIR"
 
-LOUPE_PORT="$PORT" .build/debug/MacLoupeExample >"$APP_LOG" 2>&1 &
+DYLD_INSERT_LIBRARIES="$INJECTOR_PATH" LOUPE_PORT="$PORT" .build/debug/MacLoupeExample >"$APP_LOG" 2>&1 &
 APP_PID=$!
 cleanup() {
   kill "$APP_PID" >/dev/null 2>&1 || true

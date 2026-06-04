@@ -174,9 +174,21 @@ query_ref() {
     ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
 }
 
-query_text_ref() {
-  local text="$1"
-  .build/debug/loupe ui query "$SNAPSHOT_PATH" --text "$text" --max-results 1 |
+query_nav_back_ref() {
+  local ref
+  ref="$(
+    .build/debug/loupe ui query "$SNAPSHOT_PATH" --text Back --max-results 1 |
+      ruby -rjson -e '
+        results = JSON.parse(STDIN.read)
+        puts results.dig(0, "ref").to_s
+      '
+  )"
+  if [[ -n "$ref" ]]; then
+    printf '%s\n' "$ref"
+    return
+  fi
+
+  .build/debug/loupe ui query "$SNAPSHOT_PATH" --role button --max-results 1 |
     ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch(0).fetch("ref")'
 }
 
@@ -241,7 +253,7 @@ launch_app detail
 .build/debug/loupe act wait visible --host "$HOST" --test-id example.detail --timeout 5 >/tmp/loupe-native-wait-detail.json
 fetch_snapshot
 assert_query example.detail /tmp/loupe-native-detail-query.json
-DETAIL_BACK_REF="$(query_text_ref Back)"
+DETAIL_BACK_REF="$(query_nav_back_ref)"
 .build/debug/loupe act tap --host "$HOST" --udid "$DEVICE" --snapshot "$SNAPSHOT_PATH" --ref "$DETAIL_BACK_REF"
 .build/debug/loupe act wait visible --host "$HOST" --test-id example.customerList --timeout 5 >/tmp/loupe-native-wait-list.json
 fetch_snapshot
