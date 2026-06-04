@@ -2,15 +2,11 @@
   <img src="Docs/Assets/loupe-wordmark.svg" alt="Loupe" width="360">
 </p>
 
-A runtime diagnostic CLI that gives agents inspectable app state through small
-primitives and skill-driven workflows.
+Runtime automation and diagnostics for Apple-platform apps.
 
-Loupe lets LLM agents inspect, interact with, and verify behavior in running
-Apple-platform apps through view hierarchies and properties, accessibility
-metadata, screenshots, logs, network/state evidence, and host-visible input.
-
-For Apple-platform development, Loupe gives agents eyes, hands, and runtime
-evidence inside the app.
+Loupe is a CLI for agent-driven app testing: inspect running UI state, drive
+host-visible input, and verify behavior with view and accessibility trees,
+screenshots, logs, network/state evidence, and action traces.
 
 Core diagnostic loops:
 
