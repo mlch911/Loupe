@@ -8,7 +8,7 @@ extension LoupeCLI {
 
     SUBCOMMANDS:
       logs                    Fetch app-authored runtime logs.
-      network                 Fetch app-authored network events.
+      network                 Fetch URLSession and app-authored network evidence.
       refs                    Fetch app-authored object reference evidence.
       object-graph            Summarize app-authored owner -> target references.
       heap                    Alias for object-graph evidence summary.
