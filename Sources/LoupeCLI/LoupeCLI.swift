@@ -27,11 +27,22 @@ struct LoupeCLI {
         let command = arguments.removeFirst()
 
         if command == "help" {
+            if let deprecatedCommand = arguments.first,
+               let replacement = deprecatedCommandReplacement(deprecatedCommand) {
+                printDeprecatedCommandWarning(command: deprecatedCommand, replacement: replacement)
+                printCommandHelp(replacement)
+                return
+            }
             printCommandHelp(arguments)
             return
         }
 
         if command != "--help", command != "-h", arguments.contains("--help") || arguments.contains("-h") {
+            if let replacement = deprecatedCommandReplacement(command) {
+                printDeprecatedCommandWarning(command: command, replacement: replacement)
+                printCommandHelp(replacement)
+                return
+            }
             printCommandHelp(helpPath(command: command, arguments: arguments))
             return
         }
@@ -56,6 +67,9 @@ struct LoupeCLI {
         case "--help", "-h":
             printHelp()
         default:
+            if try await runDeprecatedTopLevelCommand(command, arguments: arguments) {
+                return
+            }
             throw CLIError("Unknown command: \(command)")
         }
     }
@@ -550,7 +564,7 @@ struct LoupeCLI {
         print(renderDesignComparison(comparison, limit: options.limit))
     }
 
-    private static func skills(_ arguments: [String]) throws {
+    static func skills(_ arguments: [String]) throws {
         guard let subcommand = arguments.first else {
             throw CLIError("Usage: loupe skills install [--target all|codex|claude] [--source <skills/loupe>]")
         }
@@ -563,7 +577,7 @@ struct LoupeCLI {
         }
     }
 
-    private static func installSkills(_ arguments: [String]) throws {
+    static func installSkills(_ arguments: [String]) throws {
         let options = try InstallSkillsOptions(arguments)
         let source = try resolvedSkillSource(options.sourceURL)
         let targets = options.target.targets
@@ -1027,19 +1041,16 @@ struct LoupeCLI {
     }
 
     private static func printCommandHelp(_ path: [String]) {
-        guard let command = path.first else {
+        guard !path.isEmpty else {
             printHelp()
             return
         }
 
-        let usageKey: String
-        if path.count >= 2 {
-            usageKey = "\(command) \(path[1])"
-        } else {
-            usageKey = command
-        }
+        let usageKeys = (1...path.count)
+            .reversed()
+            .map { path.prefix($0).joined(separator: " ") }
 
-        if let usage = commandUsage(usageKey) {
+        if let usage = usageKeys.lazy.compactMap({ commandUsage($0) }).first {
             print(usage)
         } else {
             printHelp()

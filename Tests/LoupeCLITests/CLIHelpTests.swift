@@ -169,6 +169,31 @@ import Testing
         }
     }
 
+    @Test func deprecatedMainBranchCommandsHaveHiddenReplacements() {
+        let expected: [String: [String]] = [
+            "start": ["app", "launch"],
+            "launch": ["app", "launch"],
+            "fetch": ["ui", "snapshot"],
+            "capture-report": ["ui", "report"],
+            "compact": ["ui", "compact"],
+            "screen-map": ["ui", "screen"],
+            "tree": ["ui", "tree"],
+            "inspect": ["ui", "node"],
+            "query": ["ui", "query"],
+            "logs": ["debug", "logs"],
+            "trace-summary": ["debug", "trace", "summary"],
+            "tap": ["act", "tap"],
+            "set": ["ui", "set"],
+            "set-many": ["ui", "set-many"],
+            "wait-for-visible": ["act", "wait"],
+        ]
+
+        for (command, replacement) in expected {
+            #expect(LoupeCLI.deprecatedCommandReplacement(command) == replacement)
+            #expect(LoupeCLI.commandUsage(command) == nil)
+        }
+    }
+
     private func firstNonEmptyLine(from text: String?) throws -> String {
         let text = try #require(text)
         return try #require(
