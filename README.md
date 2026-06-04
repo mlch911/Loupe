@@ -266,6 +266,16 @@ checks.
 Loupe's simulator inspection and action direction is inspired by
 [AXe](https://github.com/cameroncooke/AXe),
 [Baguette](https://github.com/tddworks/baguette), and
-[Pepper](https://github.com/skwallace36/Pepper). Loupe treats those projects as
-related work, not as an API template: its workflows stay skill-driven and its
-CLI is built around the stable `app`, `ui`, `act`, and `debug` groups.
+[Pepper](https://github.com/skwallace36/Pepper). Loupe treats these projects as
+related work, not as API templates: its workflows stay skill-driven and its CLI
+is built around the stable `app`, `ui`, `act`, and `debug` groups.
+
+<details>
+<summary>Special thanks to Pepper</summary>
+
+Pepper's UI-focused runtime inspection and interaction ideas were especially
+helpful while shaping Loupe. Loupe builds on that inspiration by expanding the
+workflow beyond UI evidence into Apple-platform runtime diagnostics such as
+network, state, storage, traces, and platform-specific examples.
+
+</details>
