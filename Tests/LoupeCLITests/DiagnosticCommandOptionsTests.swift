@@ -48,6 +48,42 @@ import Testing
         #expect(options.runtimeOptions.outputURL?.path == "/tmp/loupe-reference-graph.json")
     }
 
+    @Test func objectClassOptionsParseRuntimeAndFilteringOptions() throws {
+        let options = try LoupeCLI.ObjectClassesOptions([
+            "--matching", "Device",
+            "--limit", "12",
+            "--host", "http://127.0.0.1:9876",
+            "--output", "/tmp/loupe-classes.json"
+        ])
+
+        #expect(options.matching == "Device")
+        #expect(options.limit == 12)
+        #expect(options.runtimeOptions.host.absoluteString == "http://127.0.0.1:9876")
+        #expect(options.runtimeOptions.outputURL?.path == "/tmp/loupe-classes.json")
+    }
+
+    @Test func objectDescriptionOptionsAcceptPositionalClassName() throws {
+        let options = try LoupeCLI.ObjectDescriptionOptions([
+            "DeviceActuationService",
+            "--host", "http://127.0.0.1:9876"
+        ])
+
+        #expect(options.className == "DeviceActuationService")
+        #expect(options.runtimeOptions.host.absoluteString == "http://127.0.0.1:9876")
+    }
+
+    @Test func leakProbeOptionsParseAliveOnlyAndRuntimeOptions() throws {
+        let options = try LoupeCLI.LeakProbeOptions([
+            "--alive-only",
+            "--host", "http://127.0.0.1:9876",
+            "--output", "/tmp/loupe-leaks.json"
+        ])
+
+        #expect(options.aliveOnly == true)
+        #expect(options.runtimeOptions.host.absoluteString == "http://127.0.0.1:9876")
+        #expect(options.runtimeOptions.outputURL?.path == "/tmp/loupe-leaks.json")
+    }
+
     @Test func referenceGraphBuildsOwnersNodesEdgesAndUsesDeterministicOrdering() {
         let timestamp = Date(timeIntervalSince1970: 100)
         let refs = [

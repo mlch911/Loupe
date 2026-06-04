@@ -22,6 +22,9 @@ LOGOUT_LOGS_PATH="/tmp/loupe-macos-logout-logs.json"
 NETWORK_PATH="/tmp/loupe-macos-network.json"
 REFS_PATH="/tmp/loupe-macos-refs.json"
 OBJECT_GRAPH_PATH="/tmp/loupe-macos-object-graph.json"
+OBJECT_CLASSES_PATH="/tmp/loupe-macos-object-classes.json"
+OBJECT_DESCRIPTION_PATH="/tmp/loupe-macos-object-description.json"
+LEAKS_PATH="/tmp/loupe-macos-leaks.json"
 FLAG_PATH="/tmp/loupe-macos-flag.json"
 FLAG_SET_PATH="/tmp/loupe-macos-flag-set.json"
 LOGOUT_FLAG_SET_PATH="/tmp/loupe-macos-logout-flag-set.json"
@@ -52,7 +55,7 @@ DETAIL_BACK_TRACE_DIR="/tmp/loupe-macos-detail-back-trace"
 LONG_LIST_TRACE_DIR="/tmp/loupe-macos-long-list-route-trace"
 LONG_LIST_BACK_TRACE_DIR="/tmp/loupe-macos-long-list-back-trace"
 
-rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$LOGS_PATH" "$ROUTE_LOGS_PATH" "$NEW_NAV_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$OBJECT_GRAPH_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$LOGOUT_FLAG_SET_PATH" "$EMPTY_FLAG_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$KEYCHAIN_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$PERF_PATH" "$DETAIL_SCROLL_PATH" "$LONG_LIST_SCROLL_PATH" "$MUTATION_PATH" "$INSPECT_PATH" "$INSPECT_TITLE_PATH" "$INSPECT_EMPTY_PATH" "$QUERY_PATH" "$DETAIL_SNAPSHOT_PATH" "$LONG_LIST_SNAPSHOT_PATH"
+rm -f "$APP_LOG" "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$LOGS_PATH" "$ROUTE_LOGS_PATH" "$NEW_NAV_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$OBJECT_GRAPH_PATH" "$OBJECT_CLASSES_PATH" "$OBJECT_DESCRIPTION_PATH" "$LEAKS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$LOGOUT_FLAG_SET_PATH" "$EMPTY_FLAG_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$KEYCHAIN_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$PERF_PATH" "$DETAIL_SCROLL_PATH" "$LONG_LIST_SCROLL_PATH" "$MUTATION_PATH" "$INSPECT_PATH" "$INSPECT_TITLE_PATH" "$INSPECT_EMPTY_PATH" "$QUERY_PATH" "$DETAIL_SNAPSHOT_PATH" "$LONG_LIST_SNAPSHOT_PATH"
 rm -rf "$DETAIL_TRACE_DIR" "$DETAIL_BACK_TRACE_DIR" "$LONG_LIST_TRACE_DIR" "$LONG_LIST_BACK_TRACE_DIR"
 
 LOUPE_PORT="$PORT" .build/debug/MacLoupeExample >"$APP_LOG" 2>&1 &
@@ -109,6 +112,9 @@ for _ in {1..40}; do
 done
 .build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
 .build/debug/loupe debug object-graph DeviceActuationService --host "$HOST" --output "$OBJECT_GRAPH_PATH" >/dev/null
+.build/debug/loupe debug objects classes --matching DeviceActuationService --limit 20 --host "$HOST" --output "$OBJECT_CLASSES_PATH" >/dev/null
+.build/debug/loupe debug objects describe DeviceActuationService --host "$HOST" --output "$OBJECT_DESCRIPTION_PATH" >/dev/null
+.build/debug/loupe debug leaks --alive-only --host "$HOST" --output "$LEAKS_PATH" >/dev/null
 .build/debug/loupe debug flags get mac-new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
 .build/debug/loupe debug flags set mac-new-nav --bool true --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
 .build/debug/loupe act wait value --host "$HOST" --test-id mac.example.status --key text --equals "New nav active" --timeout 5 >/tmp/loupe-macos-wait-new-nav.json
@@ -161,7 +167,10 @@ ruby -rjson -e '
   view_tree = File.read(ARGV.fetch(21))
   ax_tree = File.read(ARGV.fetch(22))
   abort "expected macOS view tree evidence" unless view_tree.include?("mac.example.list") && view_tree.include?("ambiguousLayout=")
+  abort "expected macOS SwiftUI host view tree evidence" unless view_tree.include?("mac.example.swiftui.host")
+  abort "expected macOS SwiftUI probe view tree evidence" unless view_tree.include?("mac.example.swiftui.probe")
   abort "expected macOS accessibility tree evidence" unless ax_tree.include?("mac.example.refresh")
+  abort "expected macOS SwiftUI probe accessibility tree evidence" unless ax_tree.include?("mac.example.swiftui.probe")
 
   query = JSON.parse(File.read(ARGV.fetch(1)))
   abort "expected query match for mac.example.list" unless query.any? { |node| node["testID"] == "mac.example.list" }
@@ -214,6 +223,9 @@ ruby -rjson -e '
   abort "expected AppKit image role" unless image["role"] == "image"
   abort "expected AppKit image size" unless image.dig("uiKit", "imageView", "imageSize", "width") == 24 && image.dig("uiKit", "imageView", "imageSize", "height") == 24
   abort "native AX child should not be present in view snapshot" if by_test_id["mac.example.nativeAX.action"]
+  by_test_id.fetch("mac.example.swiftui.host")
+  swiftui_probe = by_test_id.fetch("mac.example.swiftui.probe")
+  abort "expected SwiftUI probe NSViewRepresentable class evidence" unless swiftui_probe.dig("uiKit", "className") == "NSView"
 
   accessibility = JSON.parse(File.read(ARGV.fetch(14)))
   ax_nodes = accessibility.fetch("nodes")
@@ -231,6 +243,9 @@ ruby -rjson -e '
   abort "expected native AX interactive" unless native_ax["isInteractive"] == true
   abort "expected native AX frame" unless native_ax["frame"]
   abort "expected native AX activation point" unless native_ax["activationPoint"]
+  swiftui_probe_ax = ax_nodes.values.find { |node| node["testID"] == "mac.example.swiftui.probe" }
+  abort "missing macOS SwiftUI probe accessibility node" unless swiftui_probe_ax && swiftui_probe_ax["label"] == "macOS SwiftUI probe"
+  abort "expected macOS SwiftUI probe native accessibility source ref" unless swiftui_probe_ax["sourceRef"] == swiftui_probe.fetch("ref")
 
   logs = JSON.parse(File.read(ARGV.fetch(3)))
   abort "missing mac_example_visible log" unless logs.any? { |entry| entry["message"] == "mac_example_visible" }
@@ -269,6 +284,15 @@ ruby -rjson -e '
   abort "expected graph edge to DeviceActuationService" unless graph.fetch("edges").any? { |edge| edge["target"] == "DeviceActuationService" && edge["owner"] == "MacWorkbenchController" }
   abort "expected graph edge evidence ids" unless graph.fetch("edges").all? { |edge| edge["evidenceID"].is_a?(String) && !edge["evidenceID"].empty? }
   abort "expected graph node for DeviceActuationService" unless graph.fetch("nodes").any? { |node| node["name"] == "DeviceActuationService" && node["incomingCount"].to_i >= 2 }
+
+  classes = JSON.parse(File.read(ARGV.fetch(41)))
+  abort "expected ObjC class-list evidence" unless classes["evidenceKind"] == "objc-runtime-class-list"
+  abort "expected DeviceActuationService class" unless classes.fetch("classes").any? { |entry| entry["name"] == "DeviceActuationService" }
+  description = JSON.parse(File.read(ARGV.fetch(42)))
+  abort "expected DeviceActuationService class description" unless description["name"] == "DeviceActuationService" && description["evidenceKind"] == "objc-runtime-class-description"
+  leaks = JSON.parse(File.read(ARGV.fetch(43)))
+  abort "expected weak lifetime probe evidence" unless leaks["evidenceKind"] == "weak-lifetime-probe"
+  abort "expected alive DeviceActuationService probe" unless leaks.fetch("probes").any? { |probe| probe["name"] == "DeviceActuationService" && probe["isAlive"] == true && probe["expectedDeallocated"] == true }
 
   flag = JSON.parse(File.read(ARGV.fetch(5)))
   abort "expected mac-new-nav=false" unless flag.dig("value", "value") == false
@@ -369,7 +393,7 @@ ruby -rjson -e '
   abort "expected macOS error route platform metadata" unless error_root.fetch("custom").dig("platform", "value") == "macOS"
   error_logs = JSON.parse(File.read(ARGV.fetch(40)))
   abort "missing macOS error-route log" unless error_logs.any? { |entry| entry["message"] == "mac_example_error_route" && entry.dig("metadata", "reason", "value") == "feed_service_unavailable" }
-' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$INSPECT_TITLE_PATH" "$ACCESSIBILITY_PATH" "$INSPECT_EMPTY_PATH" "$EMPTY_FLAG_PATH" "$PERF_PATH" "$OBJECT_GRAPH_PATH" "$MUTATION_PATH" "$DARK_SNAPSHOT_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$NEW_NAV_LOGS_PATH" "$LOGOUT_FLAG_SET_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$LOGOUT_LOGS_PATH" "$DETAIL_SNAPSHOT_PATH" "$DETAIL_SCROLL_PATH" "$DETAIL_TRACE_DIR" "$DETAIL_BACK_TRACE_DIR" "$LONG_LIST_SNAPSHOT_PATH" "$LONG_LIST_SCROLL_PATH" "$LONG_LIST_TRACE_DIR" "$LONG_LIST_BACK_TRACE_DIR" "$ROUTE_LOGS_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH"
+' "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$INSPECT_TITLE_PATH" "$ACCESSIBILITY_PATH" "$INSPECT_EMPTY_PATH" "$EMPTY_FLAG_PATH" "$PERF_PATH" "$OBJECT_GRAPH_PATH" "$MUTATION_PATH" "$DARK_SNAPSHOT_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$NEW_NAV_LOGS_PATH" "$LOGOUT_FLAG_SET_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$LOGOUT_LOGS_PATH" "$DETAIL_SNAPSHOT_PATH" "$DETAIL_SCROLL_PATH" "$DETAIL_TRACE_DIR" "$DETAIL_BACK_TRACE_DIR" "$LONG_LIST_SNAPSHOT_PATH" "$LONG_LIST_SCROLL_PATH" "$LONG_LIST_TRACE_DIR" "$LONG_LIST_BACK_TRACE_DIR" "$ROUTE_LOGS_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$OBJECT_CLASSES_PATH" "$OBJECT_DESCRIPTION_PATH" "$LEAKS_PATH"
 
 echo "macOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

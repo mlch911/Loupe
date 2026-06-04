@@ -986,6 +986,37 @@ struct SwiftUIFixtureView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.systemBackground))
         .accessibilityIdentifier("example.fixtures.swiftui")
+        .loupeProbe("example.fixtures.swiftui.probe", label: "iOS SwiftUI probe")
+    }
+}
+
+private extension View {
+    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+        background {
+            LoupeFallbackProbeView(id: id, label: label)
+                .frame(width: 1, height: 1)
+        }
+    }
+}
+
+private struct LoupeFallbackProbeView: UIViewRepresentable {
+    let id: String
+    let label: String?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.accessibilityIdentifier = id
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = label ?? id
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        uiView.accessibilityIdentifier = id
+        uiView.isAccessibilityElement = true
+        uiView.accessibilityLabel = label ?? id
+        uiView.backgroundColor = .clear
     }
 }
 

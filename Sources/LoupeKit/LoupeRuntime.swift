@@ -18,6 +18,7 @@ public final class LoupeRuntime {
     private var logs: [LoupeRuntimeLog] = []
     private var networkEvents: [LoupeNetworkEvent] = []
     private var referenceEvidence: [LoupeReferenceEvidence] = []
+    private var lifetimeProbes: [LoupeLifetimeProbeRecord] = []
     private var metadataByTestID: [String: [String: LoupeMetadataValue]] = [:]
     private var didInstallBridge = false
 
@@ -49,6 +50,20 @@ public final class LoupeRuntime {
 
     public func runtimeReferenceEvidence() -> [LoupeReferenceEvidence] {
         referenceEvidence
+    }
+
+    public func runtimeLifetimeProbes(aliveOnly: Bool = false) -> LoupeLifetimeProbeReport {
+        let probes = lifetimeProbes.map(\.probe)
+        let visibleProbes = aliveOnly ? probes.filter(\.isAlive) : probes
+        let aliveCount = probes.filter(\.isAlive).count
+        let suspectedLeakCount = probes.filter { $0.expectedDeallocated && $0.isAlive }.count
+        return LoupeLifetimeProbeReport(
+            aliveOnly: aliveOnly,
+            probeCount: probes.count,
+            aliveCount: aliveCount,
+            suspectedLeakCount: suspectedLeakCount,
+            probes: visibleProbes
+        )
     }
 
     func metadata(forTestID testID: String?) -> [String: LoupeMetadataValue] {
@@ -88,6 +103,26 @@ public final class LoupeRuntime {
         if referenceEvidence.count > 500 {
             referenceEvidence.removeFirst(referenceEvidence.count - 500)
         }
+    }
+
+    @discardableResult
+    public func watchLifetime(
+        _ object: AnyObject,
+        name: String? = nil,
+        expectedDeallocated: Bool = true,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) -> String {
+        let record = LoupeLifetimeProbeRecord(
+            object: object,
+            name: name,
+            expectedDeallocated: expectedDeallocated,
+            metadata: metadata
+        )
+        lifetimeProbes.append(record)
+        if lifetimeProbes.count > 500 {
+            lifetimeProbes.removeFirst(lifetimeProbes.count - 500)
+        }
+        return record.id
     }
 
     private func installBridgeIfNeeded() {
@@ -269,6 +304,59 @@ public enum Loupe {
                 label: label,
                 metadata: metadata
             )
+        )
+    }
+
+    @MainActor
+    @discardableResult
+    public static func watchLifetime(
+        _ object: AnyObject,
+        name: String? = nil,
+        expectedDeallocated: Bool = true,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) -> String {
+        LoupeRuntime.shared.watchLifetime(
+            object,
+            name: name,
+            expectedDeallocated: expectedDeallocated,
+            metadata: metadata
+        )
+    }
+}
+
+private final class LoupeLifetimeProbeRecord {
+    let id: String
+    let name: String
+    let objectType: String
+    let createdAt: Date
+    let expectedDeallocated: Bool
+    let metadata: [String: LoupeMetadataValue]
+    weak var object: AnyObject?
+
+    init(
+        object: AnyObject,
+        name: String?,
+        expectedDeallocated: Bool,
+        metadata: [String: LoupeMetadataValue]
+    ) {
+        id = UUID().uuidString
+        self.object = object
+        objectType = String(reflecting: type(of: object))
+        self.name = name ?? objectType
+        createdAt = Date()
+        self.expectedDeallocated = expectedDeallocated
+        self.metadata = metadata
+    }
+
+    var probe: LoupeLifetimeProbe {
+        LoupeLifetimeProbe(
+            id: id,
+            name: name,
+            objectType: objectType,
+            createdAt: createdAt,
+            expectedDeallocated: expectedDeallocated,
+            isAlive: object != nil,
+            metadata: metadata
         )
     }
 }

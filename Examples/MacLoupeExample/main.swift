@@ -2,6 +2,7 @@ import AppKit
 import LoupeCore
 import LoupeKit
 import Security
+import SwiftUI
 
 @main
 enum MacLoupeExample {
@@ -20,6 +21,7 @@ enum MacLoupeExample {
 private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var server: LoupeServer?
     private var window: NSWindow?
+    private let deviceActuationService = DeviceActuationService()
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private var flagPollTimer: Timer?
     private var lastNewNavValue = false
@@ -107,6 +109,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(NSStackView(views: [detailButton, longListButton]))
         stack.addArrangedSubview(makeDiagnosticControls())
         stack.addArrangedSubview(makeNativeAccessibilityFixture())
+        stack.addArrangedSubview(makeSwiftUIFixture())
         stack.addArrangedSubview(makeBadContrastLabel())
         stack.addArrangedSubview(list)
         stack.addArrangedSubview(makeEmptyFeed())
@@ -388,6 +391,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         return host
     }
 
+    private func makeSwiftUIFixture() -> NSView {
+        let host = NSHostingView(rootView: MacSwiftUIFixtureView())
+        host.testID("mac.example.swiftui.host")
+        host.widthAnchor.constraint(equalToConstant: 280).isActive = true
+        host.heightAnchor.constraint(equalToConstant: 92).isActive = true
+        return host
+    }
+
     private func publishRuntimeFixtures() {
         UserDefaults.standard.set(false, forKey: "mac-new-nav")
         UserDefaults.standard.set(true, forKey: "mac-empty-feed")
@@ -425,6 +436,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             kind: "weak",
             label: "legacy flow service observer",
             metadata: ["screen": .string("workbench")]
+        )
+        Loupe.watchLifetime(
+            deviceActuationService,
+            name: "DeviceActuationService",
+            expectedDeallocated: true,
+            metadata: [
+                "owner": .string("MacWorkbenchController"),
+                "screen": .string("workbench"),
+            ]
         )
         upsertKeychainFixture()
     }
@@ -544,6 +564,31 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             kSecAttrAccount as String: "fixture",
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+@objc(DeviceActuationService)
+private final class DeviceActuationService: NSObject {}
+
+private struct MacSwiftUIFixtureView: View {
+    @State private var enabled = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("macOS SwiftUI Fixture")
+                .font(.headline)
+                .accessibilityIdentifier("mac.example.swiftui.title")
+
+            Button(enabled ? "SwiftUI enabled" : "SwiftUI disabled") {
+                enabled.toggle()
+            }
+            .accessibilityIdentifier("mac.example.swiftui.button")
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mac.example.swiftui")
+        .loupeProbe("mac.example.swiftui.probe", label: "macOS SwiftUI probe")
     }
 }
 

@@ -2,10 +2,13 @@ import UIKit
 import LoupeCore
 import LoupeKit
 import Security
+import SwiftUI
 
 final class TVViewController: UIViewController {
     private let statusLabel = UILabel()
     private let legacyButton = UIButton(type: .system)
+    private let deviceActuationService = DeviceActuationService()
+    private var swiftUIHostController: UIViewController?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -14,6 +17,7 @@ final class TVViewController: UIViewController {
     }
 
     private func buildView() {
+        removeSwiftUIHostController()
         view.subviews.forEach { $0.removeFromSuperview() }
         view.accessibilityIdentifier = "tv.example.root"
         view.backgroundColor = UIColor(red: 0.06, green: 0.08, blue: 0.11, alpha: 1)
@@ -91,6 +95,7 @@ final class TVViewController: UIViewController {
         list.accessibilityIdentifier = "tv.example.collection"
 
         let emptyFeed = makeEmptyFeed()
+        let swiftUIFixture = makeSwiftUIFixture()
         let badContrast = UILabel()
         badContrast.accessibilityIdentifier = "tv.example.dark.badContrast"
         badContrast.text = "Dark contrast sentinel"
@@ -109,6 +114,7 @@ final class TVViewController: UIViewController {
             badContrast,
             list,
             emptyFeed,
+            swiftUIFixture,
         ])
         stack.axis = .vertical
         stack.alignment = .leading
@@ -124,6 +130,8 @@ final class TVViewController: UIViewController {
             list.heightAnchor.constraint(equalToConstant: 360),
             emptyFeed.widthAnchor.constraint(equalTo: stack.widthAnchor),
             emptyFeed.heightAnchor.constraint(equalToConstant: 96),
+            swiftUIFixture.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            swiftUIFixture.heightAnchor.constraint(equalToConstant: 140),
         ])
     }
 
@@ -134,6 +142,7 @@ final class TVViewController: UIViewController {
         rowPrefix: String,
         rows: Int
     ) {
+        removeSwiftUIHostController()
         view.subviews.forEach { $0.removeFromSuperview() }
         view.accessibilityIdentifier = rootTestID
         view.backgroundColor = UIColor(red: 0.06, green: 0.08, blue: 0.11, alpha: 1)
@@ -180,6 +189,7 @@ final class TVViewController: UIViewController {
     }
 
     private func buildErrorRouteView() {
+        removeSwiftUIHostController()
         view.subviews.forEach { $0.removeFromSuperview() }
         view.accessibilityIdentifier = "tv.example.error"
         view.backgroundColor = UIColor(red: 0.06, green: 0.08, blue: 0.11, alpha: 1)
@@ -327,6 +337,27 @@ final class TVViewController: UIViewController {
         return scrollView
     }
 
+    private func makeSwiftUIFixture() -> UIView {
+        let controller = UIHostingController(rootView: TVSwiftUIFixtureView())
+        controller.view.backgroundColor = .clear
+        controller.view.accessibilityIdentifier = "tv.example.swiftui.host"
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(controller)
+        controller.didMove(toParent: self)
+        swiftUIHostController = controller
+        return controller.view
+    }
+
+    private func removeSwiftUIHostController() {
+        guard let controller = swiftUIHostController else {
+            return
+        }
+        controller.willMove(toParent: nil)
+        controller.view.removeFromSuperview()
+        controller.removeFromParent()
+        swiftUIHostController = nil
+    }
+
     private func publishRuntimeFixtures() {
         UserDefaults.standard.set(false, forKey: "tv-new-nav")
         UserDefaults.standard.set(true, forKey: "tv-empty-feed")
@@ -371,6 +402,15 @@ final class TVViewController: UIViewController {
             kind: "weak",
             label: "legacy flow service observer",
             metadata: ["screen": .string("workbench")]
+        )
+        Loupe.watchLifetime(
+            deviceActuationService,
+            name: "DeviceActuationService",
+            expectedDeallocated: true,
+            metadata: [
+                "owner": .string("TVWorkbenchController"),
+                "screen": .string("workbench"),
+            ]
         )
         upsertKeychainFixture()
     }
@@ -491,5 +531,31 @@ final class TVViewController: UIViewController {
             kSecAttrAccount as String: "fixture",
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+@objc(DeviceActuationService)
+private final class DeviceActuationService: NSObject {}
+
+private struct TVSwiftUIFixtureView: View {
+    @State private var enabled = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("tvOS SwiftUI Fixture")
+                .font(.title2.weight(.semibold))
+                .accessibilityIdentifier("tv.example.swiftui.title")
+
+            Button(enabled ? "SwiftUI enabled" : "SwiftUI disabled") {
+                enabled.toggle()
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("tv.example.swiftui.button")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tv.example.swiftui")
+        .loupeProbe("tv.example.swiftui.probe", label: "tvOS SwiftUI probe")
     }
 }

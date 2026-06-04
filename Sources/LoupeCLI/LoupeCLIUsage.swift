@@ -149,6 +149,14 @@ extension LoupeCLI {
             return "Usage: loupe debug object-graph [target|--target <name>] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
         case "debug heap":
             return "Usage: loupe debug heap [target|--target <name>] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "debug objects":
+            return "Usage: loupe debug objects classes|describe <args>"
+        case "debug objects classes":
+            return "Usage: loupe debug objects classes [--matching <name>] [--limit <n>] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "debug objects describe":
+            return "Usage: loupe debug objects describe <class|--class <name>> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+        case "debug leaks":
+            return "Usage: loupe debug leaks [--alive-only] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
         case "debug keychain":
             return "Usage: loupe debug keychain [list] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
         case "debug defaults":

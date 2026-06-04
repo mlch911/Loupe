@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 71;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -224,6 +224,7 @@
 		C10000000000000000000081 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEVELOPMENT_TEAM = HK54HM2TC6;
 				INFOPLIST_FILE = LoupeTVExample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -241,6 +242,7 @@
 		C10000000000000000000082 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEVELOPMENT_TEAM = HK54HM2TC6;
 				INFOPLIST_FILE = LoupeTVExample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

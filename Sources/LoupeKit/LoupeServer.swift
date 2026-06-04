@@ -193,6 +193,40 @@ public final class LoupeServer: @unchecked Sendable {
             } catch {
                 return ResponsePayload(status: 500, body: errorBody("refs_encoding_failed", error: error))
             }
+        case "/objects/classes":
+            do {
+                let data = try makeLoupeJSONEncoder().encode(
+                    LoupeRuntime.shared.runtimeObjectClasses(
+                        matching: request.queryItems["matching"],
+                        limit: request.queryItems["limit"].flatMap(Int.init) ?? 100
+                    )
+                )
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("object_classes_encoding_failed", error: error))
+            }
+        case "/objects/describe":
+            do {
+                guard let className = request.queryItems["class"] else {
+                    return ResponsePayload(status: 400, body: #"{"error":"missing_class"}"#)
+                }
+                let data = try makeLoupeJSONEncoder().encode(
+                    try LoupeRuntime.shared.runtimeObjectDescription(className: className)
+                )
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 400, body: errorBody("object_description_failed", error: error))
+            }
+        case "/leaks":
+            do {
+                let aliveOnly = request.queryItems["alive"] == "true" || request.queryItems["aliveOnly"] == "true"
+                let data = try makeLoupeJSONEncoder().encode(
+                    LoupeRuntime.shared.runtimeLifetimeProbes(aliveOnly: aliveOnly)
+                )
+                return ResponsePayload(status: 200, body: String(decoding: data, as: UTF8.self))
+            } catch {
+                return ResponsePayload(status: 500, body: errorBody("leaks_encoding_failed", error: error))
+            }
         case "/environment":
             do {
                 let response: LoupeEnvironmentMutationResponse

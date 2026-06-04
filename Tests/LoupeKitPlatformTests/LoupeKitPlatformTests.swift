@@ -82,6 +82,40 @@ import AppKit
         #expect(!refs.contains { $0.owner == "retention-owner-0" })
         #expect(refs.contains { $0.owner == "retention-owner-500" })
     }
+
+    @MainActor
+    @Test func runtimeObjectClassesExposeObjectiveCRuntimeMetadata() throws {
+        let classes = LoupeRuntime.shared.runtimeObjectClasses(matching: "NSObject", limit: 20)
+
+        #expect(classes.evidenceKind == "objc-runtime-class-list")
+        #expect(classes.totalCount >= classes.returnedCount)
+        #expect(classes.classes.contains { $0.name == "NSObject" })
+
+        let description = try LoupeRuntime.shared.runtimeObjectDescription(className: "NSObject")
+        #expect(description.evidenceKind == "objc-runtime-class-description")
+        #expect(description.name == "NSObject")
+    }
+
+    @MainActor
+    @Test func lifetimeProbesTrackAliveAndReleasedObjects() {
+        let runtime = LoupeRuntime.shared
+        let aliveObject = NSObject()
+        let aliveID = runtime.watchLifetime(aliveObject, name: "alive fixture")
+
+        var releasedID = ""
+        do {
+            let releasedObject = NSObject()
+            releasedID = runtime.watchLifetime(releasedObject, name: "released fixture")
+        }
+
+        let report = runtime.runtimeLifetimeProbes()
+        let aliveProbe = report.probes.first { $0.id == aliveID }
+        let releasedProbe = report.probes.first { $0.id == releasedID }
+
+        #expect(report.evidenceKind == "weak-lifetime-probe")
+        #expect(aliveProbe?.isAlive == true)
+        #expect(releasedProbe?.isAlive == false)
+    }
 }
 #endif
 

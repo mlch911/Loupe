@@ -71,6 +71,14 @@ loupe ui subtree "$REPORT/snapshot.json" --test-id target.container --depth 2
 Prefer `--test-id` when available. Use `--ref` only within the same snapshot.
 Use text or role flags for discovery, then switch to `testID` or `ref`.
 
+For SwiftUI, prefer stable accessibility surfaces over private hierarchy
+assumptions. If the app imports `LoupeKit`, ask for `.loupeProbe(...)` on
+complex regions that need durable `ui node` anchors. If the app should not
+depend on `LoupeKit`, ask for an equivalent zero-dependency
+`UIViewRepresentable` or `NSViewRepresentable` modifier that sets a standard
+accessibility identifier. Treat direct SwiftUI mutation as unsupported unless
+the app exposes a flag/default/state hook.
+
 For app diagnostics, use `Loupe.log("checkout_visible")` when importing
 `LoupeKit`. Without that import, post the bridge notification and read logs
 explicitly when needed:
@@ -99,6 +107,18 @@ loupe debug object-graph DeviceActuationService --host <runtime-host> --output /
 The graph is app-authored reference evidence, not private heap traversal.
 Use `owners` to answer what points at a target, and cite `evidenceID`, `kind`,
 `label`, `metadata`, and `timestamp` when explaining the result.
+
+For runtime object diagnostics, keep the boundary clear:
+
+```bash
+loupe debug objects classes --matching DeviceActuationService --host <runtime-host> --output /tmp/loupe-object-classes.json
+loupe debug objects describe DeviceActuationService --host <runtime-host> --output /tmp/loupe-object-description.json
+loupe debug leaks --alive-only --host <runtime-host> --output /tmp/loupe-leaks.json
+```
+
+`debug objects` reads Objective-C runtime class metadata. `debug leaks` reads
+weak lifetime probes registered by the app with `Loupe.watchLifetime(...)`; it
+is not full private heap traversal.
 
 ## Act
 

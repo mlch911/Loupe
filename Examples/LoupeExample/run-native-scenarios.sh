@@ -415,9 +415,21 @@ launch_app fixtures
 fetch_snapshot
 assert_query example.fixtures /tmp/loupe-native-fixtures-query.json
 assert_query example.fixtures.swiftui.host /tmp/loupe-native-swiftui-host-query.json
+assert_query example.fixtures.swiftui.probe /tmp/loupe-native-swiftui-probe-query.json
 assert_query example.fixtures.tab.web /tmp/loupe-native-web-tab-query.json
 assert_query example.fixtures.tab.keyboard /tmp/loupe-native-keyboard-tab-query.json
 assert_query example.fixtures.tab.nested /tmp/loupe-native-nested-tab-query.json
+.build/debug/loupe ui node "$SNAPSHOT_PATH" --test-id example.fixtures.swiftui.probe > "$INSPECT_PATH"
+.build/debug/loupe ui accessibility "$SNAPSHOT_PATH" > "$ACCESSIBILITY_PATH"
+ruby -rjson -e '
+  probe = JSON.parse(File.read(ARGV.fetch(0))).fetch("node")
+  abort "expected SwiftUI probe UIViewRepresentable class evidence" unless probe.dig("uiKit", "className") == "UIView"
+  accessibility = JSON.parse(File.read(ARGV.fetch(1)))
+  nodes = accessibility.fetch("nodes").values
+  probe_ax = nodes.find { |node| node["testID"] == "example.fixtures.swiftui.probe" }
+  abort "missing SwiftUI probe accessibility node" unless probe_ax && probe_ax["label"] == "iOS SwiftUI probe"
+  abort "expected SwiftUI probe source ref" unless probe_ax["sourceRef"] == probe.fetch("ref")
+' "$INSPECT_PATH" "$ACCESSIBILITY_PATH"
 
 launch_app fixtures.web
 .build/debug/loupe act wait visible --host "$HOST" --test-id example.fixtures.web.webView --timeout 5 >/tmp/loupe-native-wait-web.json

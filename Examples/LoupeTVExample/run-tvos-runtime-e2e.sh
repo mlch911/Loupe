@@ -107,6 +107,9 @@ ROUTE_LOGS_PATH="/tmp/loupe-tvos-route-logs.json"
 NETWORK_PATH="/tmp/loupe-tvos-network.json"
 REFS_PATH="/tmp/loupe-tvos-refs.json"
 OBJECT_GRAPH_PATH="/tmp/loupe-tvos-object-graph.json"
+OBJECT_CLASSES_PATH="/tmp/loupe-tvos-object-classes.json"
+OBJECT_DESCRIPTION_PATH="/tmp/loupe-tvos-object-description.json"
+LEAKS_PATH="/tmp/loupe-tvos-leaks.json"
 FLAG_PATH="/tmp/loupe-tvos-flag.json"
 FLAG_SET_PATH="/tmp/loupe-tvos-flag-set.json"
 FLAG_DISABLED_PATH="/tmp/loupe-tvos-flag-disabled.json"
@@ -142,7 +145,7 @@ PRESS_LONG_LIST_TRACE_DIR="/tmp/loupe-tvos-press-long-list-route-trace"
 PRESS_LONG_LIST_BACK_TRACE_DIR="/tmp/loupe-tvos-press-long-list-back-trace"
 PRESS_ERROR_TRACE_DIR="/tmp/loupe-tvos-press-error-route-trace"
 PRESS_ERROR_BACK_TRACE_DIR="/tmp/loupe-tvos-press-error-back-trace"
-rm -f "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$FOCUS_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$PRESS_LOGS_PATH" "$NEW_NAV_LOGS_PATH" "$LEGACY_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$ROUTE_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$OBJECT_GRAPH_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$FLAG_DISABLED_PATH" "$EMPTY_FLAG_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$KEYCHAIN_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$PERF_PATH" "$DETAIL_SCROLL_PATH" "$LONG_LIST_SCROLL_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$INSPECT_EMPTY_PATH" "$QUERY_PATH" "$DETAIL_SNAPSHOT_PATH" "$LONG_LIST_SNAPSHOT_PATH"
+rm -f "$SNAPSHOT_PATH" "$DARK_SNAPSHOT_PATH" "$FOCUS_SNAPSHOT_PATH" "$ACCESSIBILITY_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$RUNTIME_PATH" "$LOGS_PATH" "$PRESS_LOGS_PATH" "$NEW_NAV_LOGS_PATH" "$LEGACY_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$ROUTE_LOGS_PATH" "$NETWORK_PATH" "$REFS_PATH" "$OBJECT_GRAPH_PATH" "$OBJECT_CLASSES_PATH" "$OBJECT_DESCRIPTION_PATH" "$LEAKS_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$FLAG_DISABLED_PATH" "$EMPTY_FLAG_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$KEYCHAIN_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$ENV_PATH" "$AUDIT_PATH" "$PERF_PATH" "$DETAIL_SCROLL_PATH" "$LONG_LIST_SCROLL_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$INSPECT_EMPTY_PATH" "$QUERY_PATH" "$DETAIL_SNAPSHOT_PATH" "$LONG_LIST_SNAPSHOT_PATH"
 rm -rf "$PRESS_SELECT_TRACE_DIR" "$PRESS_DOWN_TRACE_DIR" "$PRESS_NEW_NAV_TRACE_DIR" "$PRESS_LEGACY_TRACE_DIR" "$PRESS_LOGOUT_TRACE_DIR" "$PRESS_DETAIL_TRACE_DIR" "$PRESS_DETAIL_BACK_TRACE_DIR" "$PRESS_LONG_LIST_TRACE_DIR" "$PRESS_LONG_LIST_BACK_TRACE_DIR" "$PRESS_ERROR_TRACE_DIR" "$PRESS_ERROR_BACK_TRACE_DIR"
 
 curl -fsS "$HOST/health" | grep -q LoupeKit
@@ -165,8 +168,8 @@ done
 .build/debug/loupe ui node "$SNAPSHOT_PATH" --test-id tv.example.collection > "$INSPECT_LIST_PATH"
 .build/debug/loupe ui node "$SNAPSHOT_PATH" --test-id tv.example.emptyFeed > "$INSPECT_EMPTY_PATH"
 .build/debug/loupe ui accessibility --host "$HOST" --timeout 10 --output "$ACCESSIBILITY_PATH" >/dev/null
-.build/debug/loupe ui tree "$SNAPSHOT_PATH" --view --depth 8 > "$VIEW_TREE_PATH"
-.build/debug/loupe ui tree "$SNAPSHOT_PATH" --accessibility --depth 8 > "$ACCESSIBILITY_TREE_PATH"
+.build/debug/loupe ui tree "$SNAPSHOT_PATH" --view --depth 10 > "$VIEW_TREE_PATH"
+.build/debug/loupe ui tree "$SNAPSHOT_PATH" --accessibility --depth 10 > "$ACCESSIBILITY_TREE_PATH"
 .build/debug/loupe debug logs --host "$HOST" --output "$LOGS_PATH" >/dev/null
 for _ in {1..40}; do
   .build/debug/loupe debug network --host "$HOST" --output "$NETWORK_PATH" >/dev/null
@@ -180,6 +183,9 @@ for _ in {1..40}; do
 done
 .build/debug/loupe debug refs --host "$HOST" --output "$REFS_PATH" >/dev/null
 .build/debug/loupe debug object-graph DeviceActuationService --host "$HOST" --udid "$DEVICE" --output "$OBJECT_GRAPH_PATH" >/dev/null
+.build/debug/loupe debug objects classes --matching DeviceActuationService --limit 20 --host "$HOST" --udid "$DEVICE" --output "$OBJECT_CLASSES_PATH" >/dev/null
+.build/debug/loupe debug objects describe DeviceActuationService --host "$HOST" --udid "$DEVICE" --output "$OBJECT_DESCRIPTION_PATH" >/dev/null
+.build/debug/loupe debug leaks --alive-only --host "$HOST" --udid "$DEVICE" --output "$LEAKS_PATH" >/dev/null
 .build/debug/loupe debug flags get tv-new-nav --host "$HOST" --output "$FLAG_PATH" >/dev/null
 .build/debug/loupe debug flags set tv-new-nav --bool true --host "$HOST" --output "$FLAG_SET_PATH" >/dev/null
 .build/debug/loupe debug flags get tv-empty-feed --host "$HOST" --output "$EMPTY_FLAG_PATH" >/dev/null
@@ -264,7 +270,10 @@ ruby -rjson -e '
   abort "missing tv.example.collection" unless snapshot.fetch("nodes").values.any? { |node| node["testID"] == "tv.example.collection" }
   abort "missing tv.example.emptyFeed" unless snapshot.fetch("nodes").values.any? { |node| node["testID"] == "tv.example.emptyFeed" }
   abort "expected tvOS view tree evidence" unless view_tree.include?("tv.example.collection") && view_tree.include?("ambiguousLayout=")
+  abort "expected tvOS SwiftUI host view tree evidence" unless view_tree.include?("tv.example.swiftui.host")
+  abort "expected tvOS SwiftUI probe view tree evidence" unless view_tree.include?("tv.example.swiftui.probe")
   abort "expected tvOS accessibility tree evidence" unless ax_tree.include?("tv.example.refresh")
+  abort "expected tvOS SwiftUI probe accessibility tree evidence" unless ax_tree.include?("tv.example.swiftui.probe")
 
   query = JSON.parse(File.read(ARGV.fetch(2)))
   abort "expected query match for tv.example.collection" unless query.any? { |node| node["testID"] == "tv.example.collection" }
@@ -272,6 +281,11 @@ ruby -rjson -e '
   root = JSON.parse(File.read(ARGV.fetch(3))).fetch("node")
   abort "expected root fixture metadata" unless root.fetch("custom").dig("fixture", "value") == true
   abort "expected root platform metadata" unless root.fetch("custom").dig("platform", "value") == "tvOS"
+  swiftui_host = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.swiftui.host" }
+  abort "missing tvOS SwiftUI host view" unless swiftui_host
+  swiftui_probe = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.swiftui.probe" }
+  abort "missing tvOS SwiftUI probe view" unless swiftui_probe
+  abort "expected tvOS SwiftUI probe UIViewRepresentable class evidence" unless swiftui_probe.dig("uiKit", "className") == "UIView"
 
   list = JSON.parse(File.read(ARGV.fetch(4))).fetch("node")
   abort "expected UIScrollView list" unless list.dig("uiKit", "className") == "UIScrollView"
@@ -290,6 +304,9 @@ ruby -rjson -e '
   ax_nodes = accessibility.fetch("nodes").values
   abort "missing tvOS accessibility tree refresh button" unless ax_nodes.any? { |node| node["testID"] == "tv.example.refresh" && node["role"] == "button" }
   abort "missing tvOS accessibility tree logout button" unless ax_nodes.any? { |node| node["testID"] == "tv.example.logout" && node["role"] == "button" }
+  swiftui_probe_ax = ax_nodes.find { |node| node["testID"] == "tv.example.swiftui.probe" }
+  abort "missing tvOS SwiftUI probe accessibility node" unless swiftui_probe_ax && swiftui_probe_ax["label"] == "tvOS SwiftUI probe"
+  abort "expected tvOS SwiftUI probe accessibility source ref" unless swiftui_probe_ax["sourceRef"] == swiftui_probe.fetch("ref")
 
   refresh = snapshot.fetch("nodes").values.find { |node| node["testID"] == "tv.example.refresh" }
   abort "missing tv.example.refresh focused node" unless refresh
@@ -425,6 +442,15 @@ ruby -rjson -e '
   abort "expected graph edge evidence ids" unless graph.fetch("edges").all? { |edge| edge["evidenceID"].is_a?(String) && !edge["evidenceID"].empty? }
   abort "expected graph node for DeviceActuationService" unless graph.fetch("nodes").any? { |node| node["name"] == "DeviceActuationService" && node["incomingCount"].to_i >= 2 }
 
+  classes = JSON.parse(File.read(ARGV.fetch(51)))
+  abort "expected ObjC class-list evidence" unless classes["evidenceKind"] == "objc-runtime-class-list"
+  abort "expected DeviceActuationService class" unless classes.fetch("classes").any? { |entry| entry["name"] == "DeviceActuationService" }
+  description = JSON.parse(File.read(ARGV.fetch(52)))
+  abort "expected DeviceActuationService class description" unless description["name"] == "DeviceActuationService" && description["evidenceKind"] == "objc-runtime-class-description"
+  leaks = JSON.parse(File.read(ARGV.fetch(53)))
+  abort "expected weak lifetime probe evidence" unless leaks["evidenceKind"] == "weak-lifetime-probe"
+  abort "expected alive DeviceActuationService probe" unless leaks.fetch("probes").any? { |probe| probe["name"] == "DeviceActuationService" && probe["isAlive"] == true && probe["expectedDeallocated"] == true }
+
   flag = JSON.parse(File.read(ARGV.fetch(7)))
   abort "expected tv-new-nav=false" unless flag.dig("value", "value") == false
 
@@ -524,7 +550,7 @@ ruby -rjson -e '
   abort "unexpected tvOS dark contrast issues: #{bad_contrast.inspect}" unless bad_contrast.empty?
   bad_sentinel = audit.fetch("issues").select { |issue| issue["kind"] == "lowTextContrast" && issue["testID"] == "tv.example.dark.badContrast" }
   abort "expected dark contrast sentinel issue" if bad_sentinel.empty?
-' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$FOCUS_SNAPSHOT_PATH" "$PRESS_LOGS_PATH" "$PRESS_SELECT_TRACE_DIR" "$PRESS_DOWN_TRACE_DIR" "$ACCESSIBILITY_PATH" "$INSPECT_EMPTY_PATH" "$LEGACY_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$PRESS_LEGACY_TRACE_DIR" "$PRESS_LOGOUT_TRACE_DIR" "$FLAG_DISABLED_PATH" "$EMPTY_FLAG_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$PERF_PATH" "$OBJECT_GRAPH_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$NEW_NAV_LOGS_PATH" "$PRESS_NEW_NAV_TRACE_DIR" "$DETAIL_SNAPSHOT_PATH" "$DETAIL_SCROLL_PATH" "$PRESS_DETAIL_TRACE_DIR" "$PRESS_DETAIL_BACK_TRACE_DIR" "$LONG_LIST_SNAPSHOT_PATH" "$LONG_LIST_SCROLL_PATH" "$PRESS_LONG_LIST_TRACE_DIR" "$PRESS_LONG_LIST_BACK_TRACE_DIR" "$ROUTE_LOGS_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$PRESS_ERROR_TRACE_DIR" "$PRESS_ERROR_BACK_TRACE_DIR"
+' "$RUNTIME_PATH" "$SNAPSHOT_PATH" "$QUERY_PATH" "$INSPECT_ROOT_PATH" "$INSPECT_LIST_PATH" "$LOGS_PATH" "$NETWORK_PATH" "$FLAG_PATH" "$FLAG_SET_PATH" "$ENV_PATH" "$DEVICE" "$REFS_PATH" "$KEYCHAIN_PATH" "$HIT_TEST_PATH" "$RESPONDER_PATH" "$AUDIT_PATH" "$FOCUS_SNAPSHOT_PATH" "$PRESS_LOGS_PATH" "$PRESS_SELECT_TRACE_DIR" "$PRESS_DOWN_TRACE_DIR" "$ACCESSIBILITY_PATH" "$INSPECT_EMPTY_PATH" "$LEGACY_LOGS_PATH" "$LOGOUT_LOGS_PATH" "$PRESS_LEGACY_TRACE_DIR" "$PRESS_LOGOUT_TRACE_DIR" "$FLAG_DISABLED_PATH" "$EMPTY_FLAG_PATH" "$KEYCHAIN_AFTER_LOGOUT_PATH" "$PERF_PATH" "$OBJECT_GRAPH_PATH" "$VIEW_TREE_PATH" "$ACCESSIBILITY_TREE_PATH" "$NEW_NAV_LOGS_PATH" "$PRESS_NEW_NAV_TRACE_DIR" "$DETAIL_SNAPSHOT_PATH" "$DETAIL_SCROLL_PATH" "$PRESS_DETAIL_TRACE_DIR" "$PRESS_DETAIL_BACK_TRACE_DIR" "$LONG_LIST_SNAPSHOT_PATH" "$LONG_LIST_SCROLL_PATH" "$PRESS_LONG_LIST_TRACE_DIR" "$PRESS_LONG_LIST_BACK_TRACE_DIR" "$ROUTE_LOGS_PATH" "$ERROR_FLAG_PATH" "$ERROR_FLAG_SET_PATH" "$ERROR_SNAPSHOT_PATH" "$ERROR_INSPECT_PATH" "$ERROR_LOGS_PATH" "$PRESS_ERROR_TRACE_DIR" "$PRESS_ERROR_BACK_TRACE_DIR" "$OBJECT_CLASSES_PATH" "$OBJECT_DESCRIPTION_PATH" "$LEAKS_PATH"
 
 echo "tvOS example E2E passed"
 echo "snapshot: $SNAPSHOT_PATH"

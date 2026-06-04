@@ -2,11 +2,12 @@
   <img src="Docs/Assets/loupe-wordmark.svg" alt="Loupe" width="360">
 </p>
 
-Runtime automation and diagnostics for Apple-platform apps.
+Loupe gives AI agents eyes, hands, and live app context inside running
+Apple-platform apps.
 
-Loupe is a CLI for agent-driven app testing: inspect running UI state, drive
-host-visible input, and verify behavior with view and accessibility trees,
-screenshots, logs, network/state evidence, and action traces.
+Use its CLI to inspect UI and accessibility state, drive host-visible input, and
+verify behavior with screenshots, logs, network/state evidence, and action
+traces.
 
 Core diagnostic loops:
 
@@ -88,25 +89,6 @@ debug   Read diagnostic evidence, state, traces, and scroll profiles.
 skills   Install Loupe workflow skills.
 ```
 
-## Runtime Coverage
-
-Loupe keeps the CLI small and lets skills compose commands into platform-aware
-diagnostic loops from the same primitives.
-
-The examples verify these primitives across iOS Simulator, macOS, and tvOS where
-the platform backend supports them. iOS Simulator verifies native HID scroll
-profiling; linked macOS verifies runtime-backed AppKit control activation plus
-route scroll probes; tvOS verifies remote-press routing plus runtime offset
-profiling.
-
-Run the platform examples directly when checking this support:
-
-```bash
-scripts/verify-platform-builds.sh
-Examples/MacLoupeExample/run-macos-e2e.sh
-Examples/LoupeTVExample/run-tvos-runtime-e2e.sh
-```
-
 ## How Loupe Differs From Xcode MCP Tooling
 
 [Apple's Xcode MCP bridge](https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode)
@@ -139,6 +121,73 @@ Use the accessibility tree for text discovery and action targets. Use the view
 tree for layout, UIKit properties, style, mutation refs, and design checks. Use
 `ui paint` when a visual change appears hidden by a same-frame child or
 overlay:
+
+For SwiftUI, prefer stable accessibility identifiers and explicit probe anchors
+for regions that agents must inspect as durable `ui node` targets. When the app
+can import `LoupeKit`, use the public modifier:
+
+```swift
+import LoupeKit
+import SwiftUI
+
+VStack {
+    // ...
+}
+.accessibilityIdentifier("checkout.form")
+.loupeProbe("checkout.form.probe", label: "Checkout form")
+```
+
+If the app should not depend on `LoupeKit`, use the same idea with a
+zero-dependency helper. Loupe injection will capture the platform view because
+it only relies on standard accessibility identifiers:
+
+```swift
+import SwiftUI
+
+extension View {
+    func loupeProbe(_ id: String, label: String? = nil) -> some View {
+        background(LoupeProbeView(id: id, label: label).frame(width: 1, height: 1))
+    }
+}
+
+#if canImport(UIKit)
+import UIKit
+
+private struct LoupeProbeView: UIViewRepresentable {
+    let id: String
+    let label: String?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.accessibilityIdentifier = id
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = label ?? id
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+#elseif canImport(AppKit)
+import AppKit
+
+private struct LoupeProbeView: NSViewRepresentable {
+    let id: String
+    let label: String?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.identifier = NSUserInterfaceItemIdentifier(id)
+        view.setAccessibilityElement(true)
+        view.setAccessibilityLabel(label ?? id)
+        view.setAccessibilityRole(.group)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+#endif
+```
 
 ```bash
 loupe ui paint loupe-report/snapshot.json --point 201,319
@@ -212,6 +261,10 @@ and `edges`. Graph `edges` and `owners` include the original `evidenceID`,
 `timestamp` so a leak/debug answer can point back to the exact app-authored
 record. `debug heap --target` uses the same app-authored evidence summary; it
 is not private heap traversal.
+`debug objects classes` and `debug objects describe` read Objective-C runtime
+class metadata for development builds. `debug leaks` reads weak lifetime probes
+registered by the app through `Loupe.watchLifetime(...)`; use it to verify
+expected deallocation points without claiming full heap traversal.
 `debug scroll` records elapsed time and scroll offset deltas;
 frame-level hitch classification still requires deeper instrumentation.
 
@@ -266,16 +319,14 @@ checks.
 Loupe's simulator inspection and action direction is inspired by
 [AXe](https://github.com/cameroncooke/AXe),
 [Baguette](https://github.com/tddworks/baguette), and
-[Pepper](https://github.com/skwallace36/Pepper). Loupe treats these projects as
-related work, not as API templates: its workflows stay skill-driven and its CLI
-is built around the stable `app`, `ui`, `act`, and `debug` groups.
+[Pepper](https://github.com/skwallace36/Pepper).
 
 <details>
 <summary>Special thanks to Pepper</summary>
 
-Pepper's UI-focused runtime inspection and interaction ideas were especially
-helpful while shaping Loupe. Loupe builds on that inspiration by expanding the
-workflow beyond UI evidence into Apple-platform runtime diagnostics such as
-network, state, storage, traces, and platform-specific examples.
+Loupe started with a UI-focused runtime inspection and interaction direction.
+Pepper was especially helpful in shaping how Loupe expands that workflow into
+debug diagnostics such as network evidence, runtime state, storage, traces, and
+platform-specific examples.
 
 </details>

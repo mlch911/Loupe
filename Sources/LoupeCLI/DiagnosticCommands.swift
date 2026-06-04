@@ -12,6 +12,9 @@ extension LoupeCLI {
       refs                    Fetch app-authored object reference evidence.
       object-graph            Summarize app-authored owner -> target references.
       heap                    Alias for object-graph evidence summary.
+      objects classes|describe
+                              Inspect Objective-C runtime class metadata.
+      leaks                   Fetch weak lifetime probes registered by the app.
       keychain list           List current app keychain item metadata.
       defaults get|set|unset  Read or change UserDefaults.
       flags get|set|unset     Alias for feature flags stored in UserDefaults.
@@ -45,6 +48,10 @@ extension LoupeCLI {
             )
         case "heap", "object-graph":
             try await referenceGraph(rest, commandName: subcommand)
+        case "objects":
+            try await debugObjects(rest)
+        case "leaks":
+            try await debugLeaks(rest)
         case "keychain":
             guard rest.isEmpty || rest.first == "list" else {
                 throw CLIError("Usage: loupe debug keychain [list] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]")
@@ -252,6 +259,140 @@ extension LoupeCLI {
         }
     }
 
+    struct ObjectClassesOptions {
+        var matching: String?
+        var limit: Int?
+        var runtimeOptions: DiagnosticRuntimeOptions
+
+        init(_ arguments: [String]) throws {
+            var runtimeArguments: [String] = []
+            var index = 0
+            while index < arguments.count {
+                switch arguments[index] {
+                case "--matching", "--match":
+                    matching = try Self.value(after: arguments[index], in: arguments, index: &index)
+                case "--limit":
+                    let raw = try Self.value(after: "--limit", in: arguments, index: &index)
+                    guard let value = Int(raw), value > 0 else {
+                        throw CLIError("--limit expects a positive integer")
+                    }
+                    limit = value
+                case "--host", "--udid", "--device", "--bundle-id", "--output", "--timeout":
+                    let option = arguments[index]
+                    runtimeArguments.append(option)
+                    runtimeArguments.append(try Self.value(after: option, in: arguments, index: &index))
+                case "--help", "-h":
+                    runtimeArguments.append(arguments[index])
+                default:
+                    throw CLIError("Unknown debug objects classes option: \(arguments[index])")
+                }
+                index += 1
+            }
+
+            runtimeOptions = try DiagnosticRuntimeOptions(
+                runtimeArguments,
+                usage: "loupe debug objects classes [--matching <name>] [--limit <n>] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
+        }
+
+        private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+            let valueIndex = index + 1
+            guard valueIndex < arguments.count else {
+                throw CLIError("\(option) requires a value")
+            }
+            index = valueIndex
+            return arguments[valueIndex]
+        }
+    }
+
+    struct ObjectDescriptionOptions {
+        var className: String
+        var runtimeOptions: DiagnosticRuntimeOptions
+
+        init(_ arguments: [String]) throws {
+            var runtimeArguments: [String] = []
+            var className: String?
+            var index = 0
+            while index < arguments.count {
+                switch arguments[index] {
+                case "--class":
+                    className = try Self.value(after: "--class", in: arguments, index: &index)
+                case "--host", "--udid", "--device", "--bundle-id", "--output", "--timeout":
+                    let option = arguments[index]
+                    runtimeArguments.append(option)
+                    runtimeArguments.append(try Self.value(after: option, in: arguments, index: &index))
+                case "--help", "-h":
+                    runtimeArguments.append(arguments[index])
+                default:
+                    if !arguments[index].hasPrefix("-"), className == nil {
+                        className = arguments[index]
+                    } else {
+                        throw CLIError("Unknown debug objects describe option: \(arguments[index])")
+                    }
+                }
+                index += 1
+            }
+
+            guard let className else {
+                throw CLIError("Usage: loupe debug objects describe <class|--class <name>> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]")
+            }
+            self.className = className
+            runtimeOptions = try DiagnosticRuntimeOptions(
+                runtimeArguments,
+                usage: "loupe debug objects describe <class|--class <name>> [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
+        }
+
+        private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+            let valueIndex = index + 1
+            guard valueIndex < arguments.count else {
+                throw CLIError("\(option) requires a value")
+            }
+            index = valueIndex
+            return arguments[valueIndex]
+        }
+    }
+
+    struct LeakProbeOptions {
+        var aliveOnly: Bool
+        var runtimeOptions: DiagnosticRuntimeOptions
+
+        init(_ arguments: [String]) throws {
+            aliveOnly = false
+            var runtimeArguments: [String] = []
+            var index = 0
+            while index < arguments.count {
+                switch arguments[index] {
+                case "--alive-only", "--alive":
+                    aliveOnly = true
+                case "--host", "--udid", "--device", "--bundle-id", "--output", "--timeout":
+                    let option = arguments[index]
+                    runtimeArguments.append(option)
+                    runtimeArguments.append(try Self.value(after: option, in: arguments, index: &index))
+                case "--help", "-h":
+                    runtimeArguments.append(arguments[index])
+                default:
+                    throw CLIError("Unknown debug leaks option: \(arguments[index])")
+                }
+                index += 1
+            }
+
+            runtimeOptions = try DiagnosticRuntimeOptions(
+                runtimeArguments,
+                usage: "loupe debug leaks [--alive-only] [--host <url>] [--udid <sim>] [--bundle-id <id>] [--output <path>]"
+            )
+        }
+
+        private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
+            let valueIndex = index + 1
+            guard valueIndex < arguments.count else {
+                throw CLIError("\(option) requires a value")
+            }
+            index = valueIndex
+            return arguments[valueIndex]
+        }
+    }
+
     private static func referenceGraph(_ arguments: [String], commandName: String) async throws {
         let options = try ReferenceGraphOptions(arguments, commandName: commandName)
         let data = try await runtimeData(path: "/refs", options: options.runtimeOptions.runtimeFetchOptions)
@@ -259,6 +400,47 @@ extension LoupeCLI {
         let graph = makeReferenceGraph(from: refs, target: options.target)
         let encoded = try diagnosticJSONEncoder().encode(graph)
         try write(data: encoded, outputURL: options.runtimeOptions.outputURL)
+    }
+
+    private static func debugObjects(_ arguments: [String]) async throws {
+        guard let subcommand = arguments.first else {
+            throw CLIError("Usage: loupe debug objects classes|describe <args>")
+        }
+
+        let rest = Array(arguments.dropFirst())
+        switch subcommand {
+        case "classes", "list":
+            let options = try ObjectClassesOptions(rest)
+            var query: [String] = []
+            if let matching = options.matching {
+                query.append("matching=\(urlEncode(matching))")
+            }
+            if let limit = options.limit {
+                query.append("limit=\(limit)")
+            }
+            let suffix = query.isEmpty ? "" : "?\(query.joined(separator: "&"))"
+            let data = try await runtimeData(
+                path: "/objects/classes\(suffix)",
+                options: options.runtimeOptions.runtimeFetchOptions
+            )
+            try write(data: data, outputURL: options.runtimeOptions.outputURL)
+        case "describe", "class":
+            let options = try ObjectDescriptionOptions(rest)
+            let data = try await runtimeData(
+                path: "/objects/describe?class=\(urlEncode(options.className))",
+                options: options.runtimeOptions.runtimeFetchOptions
+            )
+            try write(data: data, outputURL: options.runtimeOptions.outputURL)
+        default:
+            throw CLIError("Unknown debug objects command: \(subcommand)")
+        }
+    }
+
+    private static func debugLeaks(_ arguments: [String]) async throws {
+        let options = try LeakProbeOptions(arguments)
+        let suffix = options.aliveOnly ? "?alive=true" : ""
+        let data = try await runtimeData(path: "/leaks\(suffix)", options: options.runtimeOptions.runtimeFetchOptions)
+        try write(data: data, outputURL: options.runtimeOptions.outputURL)
     }
 
     static func makeReferenceGraph(

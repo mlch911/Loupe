@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 71;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -333,6 +333,7 @@
 		A10000000000000000000081 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEVELOPMENT_TEAM = HK54HM2TC6;
 				INFOPLIST_FILE = LoupeExample/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.loupe.example;
@@ -345,6 +346,7 @@
 		A10000000000000000000082 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEVELOPMENT_TEAM = HK54HM2TC6;
 				INFOPLIST_FILE = LoupeExample/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.loupe.example;

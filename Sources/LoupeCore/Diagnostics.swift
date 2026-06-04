@@ -149,6 +149,125 @@ public struct LoupeReferenceGraphOwner: Codable, Equatable, Sendable {
     }
 }
 
+public struct LoupeRuntimeObjectClassList: Codable, Equatable, Sendable {
+    public var evidenceKind: String
+    public var matching: String?
+    public var totalCount: Int
+    public var returnedCount: Int
+    public var classes: [LoupeRuntimeObjectClassSummary]
+
+    public init(
+        evidenceKind: String = "objc-runtime-class-list",
+        matching: String? = nil,
+        totalCount: Int,
+        returnedCount: Int,
+        classes: [LoupeRuntimeObjectClassSummary]
+    ) {
+        self.evidenceKind = evidenceKind
+        self.matching = matching
+        self.totalCount = totalCount
+        self.returnedCount = returnedCount
+        self.classes = classes
+    }
+}
+
+public struct LoupeRuntimeObjectClassSummary: Codable, Equatable, Sendable {
+    public var name: String
+    public var superclass: String?
+
+    public init(name: String, superclass: String? = nil) {
+        self.name = name
+        self.superclass = superclass
+    }
+}
+
+public struct LoupeRuntimeObjectDescription: Codable, Equatable, Sendable {
+    public var evidenceKind: String
+    public var name: String
+    public var superclass: String?
+    public var ivars: [LoupeRuntimeObjectMember]
+    public var properties: [LoupeRuntimeObjectMember]
+
+    public init(
+        evidenceKind: String = "objc-runtime-class-description",
+        name: String,
+        superclass: String? = nil,
+        ivars: [LoupeRuntimeObjectMember] = [],
+        properties: [LoupeRuntimeObjectMember] = []
+    ) {
+        self.evidenceKind = evidenceKind
+        self.name = name
+        self.superclass = superclass
+        self.ivars = ivars
+        self.properties = properties
+    }
+}
+
+public struct LoupeRuntimeObjectMember: Codable, Equatable, Sendable {
+    public var name: String
+    public var typeEncoding: String?
+    public var attributes: String?
+
+    public init(name: String, typeEncoding: String? = nil, attributes: String? = nil) {
+        self.name = name
+        self.typeEncoding = typeEncoding
+        self.attributes = attributes
+    }
+}
+
+public struct LoupeLifetimeProbe: Codable, Equatable, Sendable {
+    public var id: String
+    public var name: String
+    public var objectType: String
+    public var createdAt: Date
+    public var expectedDeallocated: Bool
+    public var isAlive: Bool
+    public var metadata: [String: LoupeMetadataValue]
+
+    public init(
+        id: String,
+        name: String,
+        objectType: String,
+        createdAt: Date,
+        expectedDeallocated: Bool,
+        isAlive: Bool,
+        metadata: [String: LoupeMetadataValue] = [:]
+    ) {
+        self.id = id
+        self.name = name
+        self.objectType = objectType
+        self.createdAt = createdAt
+        self.expectedDeallocated = expectedDeallocated
+        self.isAlive = isAlive
+        self.metadata = metadata
+    }
+}
+
+public struct LoupeLifetimeProbeReport: Codable, Equatable, Sendable {
+    public var evidenceKind: String
+    public var aliveOnly: Bool
+    public var probeCount: Int
+    public var aliveCount: Int
+    public var suspectedLeakCount: Int
+    public var probes: [LoupeLifetimeProbe]
+
+    public init(
+        evidenceKind: String = "weak-lifetime-probe",
+        aliveOnly: Bool = false,
+        probeCount: Int,
+        aliveCount: Int,
+        suspectedLeakCount: Int,
+        probes: [LoupeLifetimeProbe]
+    ) {
+        self.evidenceKind = evidenceKind
+        self.aliveOnly = aliveOnly
+        self.probeCount = probeCount
+        self.aliveCount = aliveCount
+        self.suspectedLeakCount = suspectedLeakCount
+        self.probes = probes
+    }
+}
+
 public struct LoupeStateEntry: Codable, Equatable, Sendable {
     public var key: String
     public var value: LoupeMetadataValue?
