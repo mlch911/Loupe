@@ -258,11 +258,15 @@ import SwiftUI
 
 #if canImport(AppKit) && !canImport(UIKit)
 // These tests create real NSWindow instances and exercise AppKit's global
-// application/accessibility state. Keep them serialized even though each test
-// owns its LoupeRuntime instance.
+// application/accessibility state. Keep them out of the default SwiftPM unit
+// pass; runtime AppKit coverage lives in the CLI-driven macOS E2E harness.
 @Suite(.serialized) struct LoupeAgentAppKitTests {
     @MainActor
     @Test func loupeKitSwiftUIProbeBackingViewAppearsInSnapshotWithMetadata() throws {
+        guard runLiveAppKitSwiftPMTests else {
+            return
+        }
+
         let runtime = LoupeRuntime()
         let fixture = LoupeKitSwiftUIProbeBackingViewFixture()
         defer { fixture.tearDown() }
@@ -287,6 +291,10 @@ import SwiftUI
 
     @MainActor
     @Test func appKitSnapshotCapturesWindowTestIDMetadataAndDiagnostics() throws {
+        guard runLiveAppKitSwiftPMTests else {
+            return
+        }
+
         let runtime = LoupeRuntime()
         let fixture = AppKitFixture()
         defer { fixture.tearDown() }
@@ -439,6 +447,10 @@ import SwiftUI
         #expect(cornerRadiusMutation.effective == .double(8))
         #expect(cornerRadiusMutation.changed == true)
     }
+}
+
+private var runLiveAppKitSwiftPMTests: Bool {
+    ProcessInfo.processInfo.environment["LOUPE_RUN_APPKIT_SWIFTPM_TESTS"] == "1"
 }
 
 @MainActor
