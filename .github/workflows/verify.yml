@@ -78,7 +78,7 @@ jobs:
           xcodebuild -version
 
       - name: Run macOS example E2E
-        run: Examples/MacLoupeExample/run-macos-e2e.sh
+        run: scripts/ci-run-with-diagnostics.sh "macOS E2E" Examples/MacLoupeExample/run-macos-e2e.sh
 
       - name: Upload macOS diagnostics
         if: failure()
@@ -105,7 +105,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run tvOS example E2E
-        run: Examples/LoupeTVExample/run-tvos-runtime-e2e.sh
+        run: scripts/ci-run-with-diagnostics.sh "tvOS E2E" Examples/LoupeTVExample/run-tvos-runtime-e2e.sh
 
       - name: Upload tvOS diagnostics
         if: failure()
@@ -132,7 +132,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run watchOS example E2E
-        run: Examples/LoupeWatchExample/run-watchos-runtime-e2e.sh
+        run: scripts/ci-run-with-diagnostics.sh "watchOS E2E" Examples/LoupeWatchExample/run-watchos-runtime-e2e.sh
 
       - name: Upload watchOS diagnostics
         if: failure()
@@ -161,7 +161,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run injected log E2E
-        run: Examples/LoupeExample/run-injected.sh
+        run: scripts/ci-run-with-diagnostics.sh "iOS Injected E2E" Examples/LoupeExample/run-injected.sh
 
       - name: Upload iOS injected diagnostics
         if: failure()
@@ -191,7 +191,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run runtime E2E
-        run: Examples/LoupeExample/run-runtime-e2e.sh
+        run: scripts/ci-run-with-diagnostics.sh "iOS Runtime E2E" Examples/LoupeExample/run-runtime-e2e.sh
 
       - name: Upload iOS runtime diagnostics
         if: failure()
@@ -222,7 +222,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run native scenario E2E
-        run: Examples/LoupeExample/run-native-scenarios.sh
+        run: scripts/ci-run-with-diagnostics.sh "iOS Native Scenario E2E" Examples/LoupeExample/run-native-scenarios.sh
 
       - name: Upload iOS native diagnostics
         if: failure()
@@ -253,7 +253,7 @@ jobs:
           perl -e 'alarm 90; exec @ARGV' xcrun simctl list devices available
 
       - name: Run bookmark E2E
-        run: Examples/LoupeExample/run-bookmark-e2e.sh
+        run: scripts/ci-run-with-diagnostics.sh "iOS Bookmark E2E" Examples/LoupeExample/run-bookmark-e2e.sh
 
       - name: Upload iOS bookmark diagnostics
         if: failure()
