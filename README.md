@@ -113,7 +113,6 @@ verify with a fresh report.
 - [Test Plan](Docs/TestPlan.md)
 - [Architecture Notes](Docs/LoupePlan.md)
 - [Figma Comparison](Docs/FigmaComparison.md)
-- [Open-Source App Validation](Docs/OpenSourceAppValidation.md)
 - [Homebrew Distribution](Docs/Homebrew.md)
 
 ## Contributing
