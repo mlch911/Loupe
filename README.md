@@ -19,13 +19,6 @@ Why use Loupe:
 - **Agent-sized context** by keeping full snapshots on disk and sending compact
   observations, refs, and focused nodes.
 
-What Loupe adds:
-
-MCP and CLI tools are already useful for builds, launches, simulator control,
-screenshots, and profiling. Loupe adds app-side UI evidence: native view
-properties, accessibility structure, app state, stable refs, traces, and small
-runtime probes so agents can inspect and verify UI with less guessing.
-
 ## Demo
 
 <img width="1051" height="806" alt="loupe" src="https://github.com/user-attachments/assets/4a079742-996d-46ab-b5b4-7eedc618fa7e" />
