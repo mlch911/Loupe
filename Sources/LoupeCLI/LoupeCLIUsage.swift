@@ -205,7 +205,7 @@ extension LoupeCLI {
             return "Usage: loupe injector-path"
         case "skills install":
             return """
-            Usage: loupe skills install [--target all|codex|claude] [--source <skills/loupe>]
+            Usage: loupe skills install [--target all|codex|claude] [--source <skill-dir>]
 
             Installs the Loupe skill into existing ~/.codex and/or ~/.claude skill folders. Missing clients are skipped.
             """

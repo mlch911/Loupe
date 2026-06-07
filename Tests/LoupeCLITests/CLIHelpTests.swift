@@ -81,7 +81,7 @@ import Testing
             "debug trace summary": "Usage: loupe debug trace summary <trace-dir> [--json] [--limit <n>]",
             "debug scroll": "Usage: loupe debug scroll --from x,y --to x,y --udid <sim> [--host <url>] [--duration <seconds>] [--trace-dir <path>] [--output <path>]",
             "skills": "Usage: loupe skills <subcommand>",
-            "skills install": "Usage: loupe skills install [--target all|codex|claude] [--source <skills/loupe>]",
+            "skills install": "Usage: loupe skills install [--target all|codex|claude] [--source <skill-dir>]",
         ]
 
         for (command, expected) in expectedUsage {

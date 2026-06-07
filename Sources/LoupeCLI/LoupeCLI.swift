@@ -830,7 +830,7 @@ struct LoupeCLI {
 
     static func skills(_ arguments: [String]) throws {
         guard let subcommand = arguments.first else {
-            throw CLIError("Usage: loupe skills install [--target all|codex|claude] [--source <skills/loupe>]")
+            throw CLIError("Usage: loupe skills install [--target all|codex|claude] [--source <skill-dir>]")
         }
 
         switch subcommand {
@@ -4148,7 +4148,7 @@ struct LoupeCLI {
             }
         }
 
-        throw CLIError("Could not find Loupe skill source. Run from the repo root or pass --source <path-to-skills/loupe>.")
+        throw CLIError("Could not find Loupe skill source. Run from the repo root or pass --source <path-to-skill-dir>.")
     }
 
     static func renderViewTree(

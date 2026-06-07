@@ -23,7 +23,7 @@ Use this file as a map, not as a full manual. Keep deeper project state in
   snapshots, accessibility, diagnostics, state, and layout audit coverage.
 - `Examples/LoupeTVExample`: tvOS Simulator runtime used to prove view-tree
   coverage, remote press actions, focus state, diagnostics, and state flows.
-- `skills/loupe`: draft Codex skill for Loupe workflows.
+- `skills/loupe`: Codex skill source for Loupe workflows.
 
 ## Architecture Rules
 

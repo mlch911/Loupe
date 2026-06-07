@@ -15,6 +15,9 @@ The formula builds and installs:
 - `libexec/LoupeInjector.framework/LoupeInjector`
 - `share/loupe/skills/loupe`
 
+The formula packages the Loupe skill so `loupe skills install` can install it
+into supported local agent clients.
+
 Loupe does not require a separate simulator action CLI; runtime actions use the
 native HID backend packaged with `loupe`.
 

@@ -1,6 +1,6 @@
 ---
 name: loupe
-description: Use this skill when working with Loupe Apple-platform runtime automation, simulator injection, linked LoupeInjector runtimes, view-tree inspection, accessibility tree querying, compact screen context, or Loupe CLI-driven platform actions.
+description: Use this skill when implementing, inspecting, or verifying native app interfaces on Apple platforms with Loupe runtime evidence, simulator injection, linked LoupeInjector runtimes, view/accessibility trees, design comparison, mutation probes, or CLI-driven actions.
 ---
 
 # Loupe
