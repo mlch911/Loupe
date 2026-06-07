@@ -10,14 +10,29 @@ NAME="$1"
 shift
 TAIL_LINES="${LOUPE_CI_TAIL_LINES:-120}"
 DIAGNOSTIC_GLOBS="${LOUPE_CI_DIAGNOSTICS:-/tmp/loupe-*}"
+OUTPUT_LOG="/tmp/loupe-ci-${NAME//[^[:alnum:]._-]/-}.log"
 
-"$@" || STATUS=$?
+set +e
+"$@" > >(tee "$OUTPUT_LOG") 2>&1
+STATUS=$?
+set -e
 STATUS="${STATUS:-0}"
 if [[ "$STATUS" -eq 0 ]]; then
   exit 0
 fi
 
-echo "::error title=${NAME} failed::Command exited with status ${STATUS}"
+SUMMARY="$(
+  tail -n 20 "$OUTPUT_LOG" 2>/dev/null \
+    | tr '\n' ' ' \
+    | sed 's/%/%25/g; s/\r/%0D/g' \
+    | cut -c 1-900
+)"
+if [[ -z "$SUMMARY" ]]; then
+  SUMMARY="Command exited with status ${STATUS}"
+else
+  SUMMARY="Command exited with status ${STATUS}. Last output: ${SUMMARY}"
+fi
+echo "::error title=${NAME} failed::${SUMMARY}"
 echo "::group::Loupe diagnostics"
 for pattern in $DIAGNOSTIC_GLOBS; do
   matches=( $pattern )
