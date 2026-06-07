@@ -1233,7 +1233,7 @@ struct LoupeCLI {
         return LoupeInjectorPathResolver().resolve()
     }
 
-    static let developmentVersion = "0.1.4-dev"
+    static let developmentVersion = "0.1.5-dev"
 
     static func versionString(
         executablePath: String? = Bundle.main.executableURL?.path,

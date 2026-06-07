@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct CLIHelpTests {
     @Test func versionFallsBackToDevelopmentVersionOutsideHomebrew() {
-        #expect(LoupeCLI.versionString(executablePath: "/tmp/loupe/.build/debug/loupe") == "0.1.4-dev")
+        #expect(LoupeCLI.versionString(executablePath: "/tmp/loupe/.build/debug/loupe") == "0.1.5-dev")
     }
 
     @Test func versionCanBeDetectedFromHomebrewCellarPath() {
