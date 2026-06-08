@@ -1361,7 +1361,14 @@ public enum LoupeDesignComparator {
         guard let actual else {
             return false
         }
-        return normalizedTextValue(expected) == normalizedTextValue(actual)
+        let normalizedExpected = normalizedTextValue(expected)
+        let normalizedActual = normalizedTextValue(actual)
+        if normalizedExpected == normalizedActual {
+            return true
+        }
+        return terminalEllipsisPrefix(normalizedActual).map { prefix in
+            !prefix.isEmpty && normalizedExpected.hasPrefix(prefix)
+        } ?? false
     }
 
     private static func normalizedTextValue(_ text: String) -> String {
@@ -1369,6 +1376,16 @@ public enum LoupeDesignComparator {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    private static func terminalEllipsisPrefix(_ text: String) -> String? {
+        if text.hasSuffix("...") {
+            return String(text.dropLast(3))
+        }
+        if text.hasSuffix("…") {
+            return String(text.dropLast())
+        }
+        return nil
     }
 
     private static func fontNamesEquivalent(_ expected: String, _ actual: String?) -> Bool {

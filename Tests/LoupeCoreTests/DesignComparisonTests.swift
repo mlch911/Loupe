@@ -293,6 +293,190 @@ struct DesignComparisonTests {
         })
     }
 
+    @Test func truncatedNativeDisplayTextCanMatchFullDesignText() {
+        let snapshot = LoupeSnapshot(
+            id: "design-truncated-display-text",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["total", "page-count"]
+                ),
+                "total": LoupeNode(
+                    ref: "total",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.total",
+                    text: "$302...",
+                    renderedText: "$302...",
+                    semanticText: "$302...",
+                    frame: LoupeRect(x: 1064, y: 170, width: 124, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "page-count": LoupeNode(
+                    ref: "page-count",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.page-count",
+                    text: "290…",
+                    renderedText: "290…",
+                    semanticText: "290…",
+                    frame: LoupeRect(x: 1259, y: 170, width: 123, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.total",
+                    name: "Total",
+                    role: "staticText",
+                    text: "$30200",
+                    frame: LoupeRect(x: 1064, y: 170, width: 83, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.page-count",
+                    name: "Page Count",
+                    role: "staticText",
+                    text: "290+",
+                    frame: LoupeRect(x: 1259, y: 170, width: 55, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 2)
+        #expect(!comparison.issues.contains { $0.kind == .textDelta })
+        #expect(!comparison.issues.contains { $0.kind == .frameDelta })
+    }
+
+    @Test func truncatedNativeDisplayTextDoesNotHideDifferentText() {
+        let snapshot = LoupeSnapshot(
+            id: "design-truncated-display-text-different-prefix",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["wrong-prefix", "no-ellipsis", "ellipsis-only"]
+                ),
+                "wrong-prefix": LoupeNode(
+                    ref: "wrong-prefix",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.wrong-prefix",
+                    text: "$402...",
+                    renderedText: "$402...",
+                    semanticText: "$402...",
+                    frame: LoupeRect(x: 1064, y: 170, width: 124, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "no-ellipsis": LoupeNode(
+                    ref: "no-ellipsis",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.no-ellipsis",
+                    text: "5",
+                    renderedText: "5",
+                    semanticText: "5",
+                    frame: LoupeRect(x: 1258, y: 338, width: 42, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "ellipsis-only": LoupeNode(
+                    ref: "ellipsis-only",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.ellipsis-only",
+                    text: "...",
+                    renderedText: "...",
+                    semanticText: "...",
+                    frame: LoupeRect(x: 1260, y: 390, width: 42, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.wrong-prefix",
+                    name: "Total",
+                    role: "staticText",
+                    text: "$30200",
+                    frame: LoupeRect(x: 1064, y: 170, width: 83, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.no-ellipsis",
+                    name: "Download",
+                    role: "staticText",
+                    text: "500",
+                    frame: LoupeRect(x: 1258, y: 338, width: 42, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.ellipsis-only",
+                    name: "Ellipsis",
+                    role: "staticText",
+                    text: "500",
+                    frame: LoupeRect(x: 1260, y: 390, width: 42, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.issues.filter { $0.kind == .textDelta }.count == 3)
+    }
+
     @Test func genericViewWithRuntimeContainerRoleDoesNotReportRoleDelta() {
         let snapshot = LoupeSnapshot(
             id: "design-container-role-view",
