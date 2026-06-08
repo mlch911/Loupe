@@ -112,6 +112,61 @@ struct DesignComparisonTests {
         #expect(unexpectedWithoutTestID == false)
     }
 
+    @Test func hairlineDividerCornerRadiusDoesNotCreateStyleDelta() {
+        let snapshot = LoupeSnapshot(
+            id: "design-hairline-radius",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["line"]
+                ),
+                "line": LoupeNode(
+                    ref: "line",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "ShapeView",
+                    role: "Unknown",
+                    testID: "dashboard.divider",
+                    frame: LoupeRect(x: 268, y: 550, width: 552, height: 1),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(
+                        backgroundColor: LoupeColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1),
+                        cornerRadius: 0
+                    )
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.divider",
+                    name: "line",
+                    role: "view",
+                    frame: LoupeRect(x: 268, y: 550, width: 552, height: 1),
+                    style: LoupeDesignStyle(backgroundColor: "#E6E6E6", cornerRadius: 5)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 1)
+        #expect(!comparison.issues.contains { $0.kind == .cornerRadiusDelta })
+    }
+
     @Test func testIDMatchesStillReportRoleAndTextDeltas() {
         let snapshot = LoupeSnapshot(
             id: "design-copy",

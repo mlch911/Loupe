@@ -776,16 +776,18 @@ public enum LoupeDesignComparator {
                 options: options,
                 to: &issues
             )
-            appendNumericIssue(
-                .cornerRadiusDelta,
-                property: "cornerRadius",
-                expected: style.cornerRadius,
-                actual: styleNode.style?.cornerRadius,
-                tolerance: options.cornerRadiusTolerance,
-                designNode: designNode,
-                appNode: appNode,
-                to: &issues
-            )
+            if !isHairlineCornerRadiusNoise(designNode) {
+                appendNumericIssue(
+                    .cornerRadiusDelta,
+                    property: "cornerRadius",
+                    expected: style.cornerRadius,
+                    actual: styleNode.style?.cornerRadius,
+                    tolerance: options.cornerRadiusTolerance,
+                    designNode: designNode,
+                    appNode: appNode,
+                    to: &issues
+                )
+            }
         }
         if shouldCompareObservableTextStyle {
             appendColorIssue(
@@ -1095,6 +1097,16 @@ public enum LoupeDesignComparator {
                 message: "\(displayName(designNode)) \(property) differs by \(delta)"
             )
         )
+    }
+
+    private static func isHairlineCornerRadiusNoise(_ designNode: LoupeDesignNode) -> Bool {
+        guard normalizedRole(designNode.role) == "view",
+              trimmedNonEmpty(designNode.text) == nil else {
+            return false
+        }
+        let minDimension = min(designNode.frame.width, designNode.frame.height)
+        let maxDimension = max(designNode.frame.width, designNode.frame.height)
+        return minDimension <= 1.5 && maxDimension >= 8
     }
 
     private static func appendRoleIssue(
