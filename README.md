@@ -6,18 +6,20 @@ Loupe helps AI coding agents build and verify native app interfaces on Apple
 platforms by inspecting the app that is actually running, not just the source
 code or a screenshot.
 
-Agents get live UI evidence: view and accessibility trees, screenshots, logs,
-network and runtime state, input traces, design comparison, and small UI
-probes.
+Tools like the Xcode MCP server and XcodeBuildMCP can compile, launch, test, or
+drive an app. Loupe adds the runtime UI layer: structured evidence from the app
+that is actually running, so agents can inspect, probe, and verify native
+interface work.
 
 Why use Loupe:
 
-- **Better UI checks** with view/accessibility trees, view properties, app
-  state, traces, and screenshots.
-- **Shorter rebuild loop** by probing small UI changes before choosing a source
-  edit.
-- **Agent-sized context** by keeping full snapshots on disk and sending compact
-  observations, refs, and focused nodes.
+- **Less guessing from screenshots.** Agents inspect the running app through
+  native view trees and properties, accessibility metadata, screenshots, logs,
+  network activity, and app state.
+- **Fewer missed UI issues.** Loupe checks layout, hit testing, responder paths,
+  and design drift against the live interface.
+- **Faster development loops.** Compact observations and runtime UI mutations let
+  agents try small fixes before another compile/run cycle.
 
 ## Demo
 
