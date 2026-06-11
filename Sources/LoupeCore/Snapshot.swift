@@ -809,6 +809,43 @@ public struct LoupeNode: Codable, Equatable {
     }
 }
 
+extension LoupeNode {
+    public var isLoupeProbeMarker: Bool {
+        hasLoupeProbeMetadata || hasLoupeProbeTypeName || isAppAuthoredLoupeProbeControl
+    }
+
+    var hasLoupeProbeMetadata: Bool {
+        custom["loupe.probe"] == .bool(true)
+    }
+
+    var hasLoupeProbeTypeName: Bool {
+        if typeName == "LoupeWatchProbe" {
+            return true
+        }
+        let lowercasedType = typeName.lowercased()
+        if lowercasedType.contains("loupeprobe") {
+            return true
+        }
+        return lowercasedType.contains("platformviewrepresentableadaptor<")
+            && lowercasedType.contains("probe")
+    }
+
+    var isAppAuthoredLoupeProbeControl: Bool {
+        let lowercasedType = typeName.lowercased()
+        guard lowercasedType == "probecontrol" || lowercasedType.hasSuffix(".probecontrol") else {
+            return false
+        }
+        let identifiers = [testID, accessibility?.identifier]
+            .compactMap { $0?.lowercased() }
+        return identifiers.contains { identifier in
+            identifier.hasPrefix("probe_")
+                || identifier.hasPrefix("probe.")
+                || identifier.contains(".probe.")
+                || identifier.hasSuffix(".probe")
+        }
+    }
+}
+
 public struct LoupeScreen: Codable, Equatable {
     public var size: LoupeSize
     public var scale: Double

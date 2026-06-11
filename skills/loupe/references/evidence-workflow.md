@@ -70,8 +70,15 @@ screenshots when supported; macOS host runtimes may need JSON-only proof.
   the raw hosting tree is sparse, add minimal debug-only probes to expose
   intended bounds and identifiers, then record that comparison is probe-backed.
   Probe-backed `compare-design=0` is structural proof, not visual proof.
-- Transparent probe overlays can create overlap or small-target audit noise.
-  Separate that synthetic noise from real visual, accessibility, and interaction
+- Do not create invisible overlay controls with product `testID`s as a probe
+  fallback. Use the public `.loupeProbe(...)`, a local representable fallback
+  that sets `loupe.probe=true`, or registered probe notifications so Loupe can
+  classify the nodes as synthetic.
+- Probe nodes should be noninteractive unless the probe specifically represents
+  an action target. Avoid hidden buttons/text fields as bounds probes; they add
+  false small-target and overlap noise.
+- If transparent probe overlays are unavoidable, record them as a limitation and
+  separate that synthetic noise from real visual, accessibility, and interaction
   issues in the result.
 - Treat `ui audit` on SwiftUI-hosted internals as triage. Empty
   `ui reflect sourceCandidates` can be correct for framework wrappers or
@@ -81,12 +88,18 @@ screenshots when supported; macOS host runtimes may need JSON-only proof.
 
 - Import path: public `.loupeProbe(...)` from `LoupeKit`.
 - No-import path: local `UIViewRepresentable`/`NSViewRepresentable` fallback
-  with accessibility identifier/label/traits.
+  with accessibility identifier/label/traits and `testProperty("loupe.probe",
+  true)` when LoupeCore helpers are available.
 - Notification path: post `dev.loupe.probe` / `dev.loupe.removeProbe` with
   measured bounds. Synthetic nodes are structural locators, not platform views,
   so activation and mutation can correctly fail.
 - Probe payload keys: `id`, `label`, `role`, `frame` with `x/y/width/height`,
   and optional `isInteractive`.
+- For design comparison, use the design node ID as the probe ID when possible.
+  If the probe represents visible text, keep `label` equal to the exact visible
+  text. Put state like "selected" in metadata or result notes, not in the label.
+  Use broad-region probes only for broad design nodes; do not let a row probe
+  stand in for a screen surface or header container.
 
 ## Diagnostics
 

@@ -94,7 +94,17 @@ struct ApplyDesignSuggestionsOptions {
     func selectedSuggestions<T: Sequence>(
         from suggestions: T
     ) -> [T.Element] where T.Element == LoupeDesignMutationSuggestion {
-        let filtered = suggestions.enumerated().filter { allowedProperties.contains($0.element.property) }
+        selectedSuggestions(from: suggestions, referenceSnapshot: nil)
+    }
+
+    func selectedSuggestions<T: Sequence>(
+        from suggestions: T,
+        referenceSnapshot: LoupeSnapshot?
+    ) -> [T.Element] where T.Element == LoupeDesignMutationSuggestion {
+        let filtered = suggestions.enumerated().filter {
+            allowedProperties.contains($0.element.property)
+                && !Self.targetsLoupeProbe($0.element, in: referenceSnapshot)
+        }
         guard !propertyFilterWasExplicit else {
             return Array(filtered.prefix(maxSuggestions).map(\.element))
         }
@@ -145,6 +155,27 @@ struct ApplyDesignSuggestionsOptions {
     }
 
     private static let defaultFrameProbeLimit = 1
+
+    private static func targetsLoupeProbe(
+        _ suggestion: LoupeDesignMutationSuggestion,
+        in snapshot: LoupeSnapshot?
+    ) -> Bool {
+        guard let snapshot, var node = snapshot.nodes[suggestion.ref] else {
+            return false
+        }
+        if node.isLoupeProbeMarker {
+            return true
+        }
+        var depth = 0
+        while depth < 4, let parentRef = node.parentRef, let parent = snapshot.nodes[parentRef] {
+            if parent.isLoupeProbeMarker {
+                return true
+            }
+            node = parent
+            depth += 1
+        }
+        return false
+    }
 
     private static func value(after option: String, in arguments: [String], index: inout Int) throws -> String {
         let valueIndex = index + 1

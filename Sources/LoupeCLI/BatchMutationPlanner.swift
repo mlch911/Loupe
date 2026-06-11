@@ -10,7 +10,7 @@ struct BatchMutationPlan: Equatable {
 
 enum BatchMutationPlanner {
     static func makePlan(snapshot: LoupeSnapshot, options: BatchMutationOptions) -> [BatchMutationPlan] {
-        selectedNodes(snapshot: snapshot, options: options)
+        let plannedTargets = selectedNodes(snapshot: snapshot, options: options)
             .sorted { lhs, rhs in
                 let lhsFrame = lhs.frame
                 let rhsFrame = rhs.frame
@@ -19,17 +19,50 @@ enum BatchMutationPlanner {
                 }
                 return (lhsFrame?.y ?? 0) < (rhsFrame?.y ?? 0)
             }
+            .compactMap { node -> (node: LoupeNode, mutationRefs: [String])? in
+                let mutationRefs = mutationRefs(for: node, snapshot: snapshot, options: options)
+                guard !mutationRefs.isEmpty else {
+                    return nil
+                }
+                return (node, mutationRefs)
+            }
+
+        return plannedTargets
             .enumerated()
-            .map { index, node in
-                let childRefs = node.children.prefix(options.includeChildren)
-                let mutationRefs = [node.ref] + childRefs
+            .map { index, target in
                 return BatchMutationPlan(
-                    targetRef: node.ref,
-                    mutationRefs: Array(mutationRefs),
+                    targetRef: target.node.ref,
+                    mutationRefs: target.mutationRefs,
                     value: options.values[index % options.values.count],
-                    frame: node.frame
+                    frame: target.node.frame
                 )
             }
+    }
+
+    private static func mutationRefs(
+        for node: LoupeNode,
+        snapshot: LoupeSnapshot,
+        options: BatchMutationOptions
+    ) -> [String] {
+        guard let property = options.property else {
+            return [node.ref]
+        }
+
+        var refs: [String] = []
+        if MutationPropertySupport.supports(property, for: node) {
+            refs.append(node.ref)
+        }
+
+        for childRef in node.children.prefix(options.includeChildren) {
+            guard let child = snapshot.nodes[childRef] else {
+                refs.append(childRef)
+                continue
+            }
+            if MutationPropertySupport.supports(property, for: child) {
+                refs.append(childRef)
+            }
+        }
+        return refs
     }
 
     private static func selectedNodes(snapshot: LoupeSnapshot, options: BatchMutationOptions) -> [LoupeNode] {

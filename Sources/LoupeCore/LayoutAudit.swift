@@ -241,6 +241,9 @@ public enum LoupeLayoutAuditor {
         if isSystemTabBarItem(first, in: snapshot), isSystemTabBarItem(second, in: snapshot) {
             return false
         }
+        if isOversizedAppleStaticTextFrameOverlapNoise(first, second) {
+            return false
+        }
         if isPassiveStyledSurface(first) {
             return false
         }
@@ -279,6 +282,32 @@ public enum LoupeLayoutAuditor {
         if LoupeObservationCompactor.displayText(for: node) != nil { return true }
         if node.testID != nil { return true }
         return false
+    }
+
+    private static func isOversizedAppleStaticTextFrameOverlapNoise(_ first: LoupeNode, _ second: LoupeNode) -> Bool {
+        guard isAppleStaticTextNode(first), isAppleStaticTextNode(second) else {
+            return false
+        }
+        return hasOversizedAppleStaticTextFrame(first) || hasOversizedAppleStaticTextFrame(second)
+    }
+
+    private static func isAppleStaticTextNode(_ node: LoupeNode) -> Bool {
+        guard isAppleRuntime(node),
+              node.role == "staticText",
+              !node.isInteractive,
+              LoupeObservationCompactor.displayText(for: node) != nil else {
+            return false
+        }
+        return node.uiKit?.label != nil || node.uiKit?.textField != nil
+    }
+
+    private static func hasOversizedAppleStaticTextFrame(_ node: LoupeNode) -> Bool {
+        guard let frame = node.frame,
+              let fontSize = node.style?.fontSize,
+              fontSize > 0 else {
+            return false
+        }
+        return frame.height >= max(44, fontSize * 2.5)
     }
 
     private static func isPassiveStyledSurface(_ node: LoupeNode) -> Bool {
@@ -398,13 +427,7 @@ public enum LoupeLayoutAuditor {
     }
 
     private static func isLoupeProbe(_ node: LoupeNode) -> Bool {
-        if node.typeName == "LoupeWatchProbe" {
-            return true
-        }
-        if case .bool(true) = node.custom["loupe.probe"] {
-            return true
-        }
-        return false
+        node.isLoupeProbeMarker
     }
 
     private static func interactiveIssues(
@@ -505,6 +528,9 @@ public enum LoupeLayoutAuditor {
     }
 
     private static func shouldAuditTouchTargetSize(_ node: LoupeNode, in snapshot: LoupeSnapshot) -> Bool {
+        if isLoupeProbe(node) {
+            return false
+        }
         if isSystemOwnedImplementationDetail(node) {
             return false
         }
@@ -723,11 +749,16 @@ public enum LoupeLayoutAuditor {
     private static func isContrastBackgroundCandidate(_ node: LoupeNode) -> Bool {
         guard node.isVisible,
               !node.isInteractive,
-              node.accessibility?.isElement != true,
-              LoupeObservationCompactor.displayText(for: node) == nil,
               let color = node.style?.backgroundColor,
               color.alpha > 0
         else {
+            return false
+        }
+        if isPassiveStyledSurface(node) {
+            return true
+        }
+        guard node.accessibility?.isElement != true,
+              LoupeObservationCompactor.displayText(for: node) == nil else {
             return false
         }
         return true

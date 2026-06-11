@@ -83,6 +83,164 @@ import Testing
         #expect(plan.map { $0.targetRef } == ["cell2"])
     }
 
+    @Test func textColorChildRefsOnlyIncludeTextBackedNodes() throws {
+        let options = try BatchMutationOptions([
+            "--refs", "container",
+            "textColor",
+            "--color", "#F45124",
+            "--include-children", "3",
+        ])
+        let snapshot = LoupeSnapshot(
+            id: "snapshot",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 390, height: 844), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "container": LoupeNode(
+                    ref: "container",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "UIView",
+                    frame: LoupeRect(x: 0, y: 0, width: 200, height: 80),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["internal-text-layout", "label", "background"]
+                ),
+                "internal-text-layout": LoupeNode(
+                    ref: "internal-text-layout",
+                    parentRef: "container",
+                    kind: .view,
+                    typeName: "_UITextLayoutCanvasView",
+                    frame: LoupeRect(x: 0, y: 0, width: 200, height: 40),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "label": LoupeNode(
+                    ref: "label",
+                    parentRef: "container",
+                    kind: .view,
+                    typeName: "UILabel",
+                    frame: LoupeRect(x: 0, y: 40, width: 200, height: 20),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    uiKit: LoupeUIKitProperties(
+                        className: "UILabel",
+                        tag: 0,
+                        alpha: 1,
+                        isHidden: false,
+                        isOpaque: false,
+                        clipsToBounds: false,
+                        userInteractionEnabled: false,
+                        isFirstResponder: false,
+                        label: LoupeUILabelProperties()
+                    )
+                ),
+                "background": LoupeNode(
+                    ref: "background",
+                    parentRef: "container",
+                    kind: .view,
+                    typeName: "UIView",
+                    frame: LoupeRect(x: 0, y: 60, width: 200, height: 20),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+            ]
+        )
+
+        let plan = BatchMutationPlanner.makePlan(snapshot: snapshot, options: options)
+
+        #expect(plan.map(\.targetRef) == ["container"])
+        #expect(plan[0].mutationRefs == ["label"])
+    }
+
+    @Test func textColorSkipsDirectInternalTextLayoutTargets() throws {
+        let options = try BatchMutationOptions([
+            "--type-name", "_UITextLayoutCanvasView",
+            "textColor",
+            "--color", "#F45124",
+        ])
+        let snapshot = LoupeSnapshot(
+            id: "snapshot",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 390, height: 844), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "internal-text-layout": LoupeNode(
+                    ref: "internal-text-layout",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "_UITextLayoutCanvasView",
+                    frame: LoupeRect(x: 0, y: 0, width: 200, height: 40),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+            ]
+        )
+
+        let plan = BatchMutationPlanner.makePlan(snapshot: snapshot, options: options)
+
+        #expect(plan.isEmpty)
+    }
+
+    @Test func valueSequenceUsesPlannedTargetsAfterUnsupportedNodesAreSkipped() throws {
+        let options = try BatchMutationOptions([
+            "--role", "staticText",
+            "textColor",
+            "--colors", "#111111", "#222222",
+        ])
+        let snapshot = LoupeSnapshot(
+            id: "snapshot",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 390, height: 844), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "internal": LoupeNode(
+                    ref: "internal",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "_UITextLayoutCanvasView",
+                    role: "staticText",
+                    frame: LoupeRect(x: 0, y: 0, width: 100, height: 20),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "label": LoupeNode(
+                    ref: "label",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    frame: LoupeRect(x: 0, y: 30, width: 100, height: 20),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    uiKit: LoupeUIKitProperties(
+                        className: "UILabel",
+                        tag: 0,
+                        alpha: 1,
+                        isHidden: false,
+                        isOpaque: false,
+                        clipsToBounds: false,
+                        userInteractionEnabled: false,
+                        isFirstResponder: false,
+                        label: LoupeUILabelProperties()
+                    )
+                ),
+            ]
+        )
+
+        let plan = BatchMutationPlanner.makePlan(snapshot: snapshot, options: options)
+
+        #expect(plan.map(\.targetRef) == ["label"])
+        #expect(plan[0].value == options.values[0])
+    }
+
     private static func cell(
         _ ref: String,
         y: Double,

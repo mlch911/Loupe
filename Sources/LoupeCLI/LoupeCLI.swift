@@ -595,7 +595,11 @@ struct LoupeCLI {
             LoupeDesignComparison.self,
             from: Data(contentsOf: options.compareURL)
         )
-        let selectedSuggestions = options.selectedSuggestions(from: comparison.suggestions)
+        let referenceSnapshot = try options.snapshotURL.map { try decodeSnapshot(from: $0) }
+        let selectedSuggestions = options.selectedSuggestions(
+            from: comparison.suggestions,
+            referenceSnapshot: referenceSnapshot
+        )
         guard !selectedSuggestions.isEmpty else {
             throw CLIError("apply-design-suggestions found no suggestions matching the requested filters")
         }
@@ -666,7 +670,6 @@ struct LoupeCLI {
             try await validateRuntimeIdentity(host: host, expectedUDID: udid, timeout: options.timeout)
         }
 
-        let referenceSnapshot = try options.snapshotURL.map { try decodeSnapshot(from: $0) }
         var liveSnapshot = try await fetchSnapshot(host: host, timeout: options.timeout)
         let before = liveSnapshot
         try writeSnapshot(before, to: beforeURL)
@@ -4529,7 +4532,7 @@ struct LoupeCLI {
                 case .text:
                     return displayText(node) != nil
                 case .mutable:
-                    return !supportedMutationProperties(for: node).isEmpty
+                    return !MutationPropertySupport.supportedProperties(for: node).isEmpty
                 }
             }
         let lines = nodes.map(viewTreeLine)
@@ -4774,86 +4777,6 @@ struct LoupeCLI {
             && !node.isInteractive
     }
 
-    private static func supportedMutationProperties(for node: LoupeNode) -> [String] {
-        var properties = [
-            "frame", "bounds", "center", "alpha", "hidden", "clipsToBounds",
-            "userInteractionEnabled", "backgroundColor", "tintColor", "accessibility.label",
-            "accessibility.value", "accessibility.hint", "accessibility.isElement",
-            "layout.translatesAutoresizingMaskIntoConstraints", "layout.hugging.horizontal",
-            "layout.hugging.vertical", "layout.compressionResistance.horizontal",
-            "layout.compressionResistance.vertical",
-        ]
-
-        if supportsTextMutation(node) {
-            properties += ["text"]
-        }
-        if supportsTextColorMutation(node) {
-            properties += ["textColor"]
-        }
-        if supportsFontSizeMutation(node) {
-            properties += ["fontSize"]
-        }
-        if supportsTextAlignmentMutation(node) {
-            properties += ["textAlignment"]
-        }
-        if supportsLineBreakModeMutation(node) {
-            properties += ["lineBreakMode"]
-        }
-        if supportsUILabelSpecificMutations(node) {
-            properties += ["numberOfLines", "adjustsFontSizeToFitWidth", "minimumScaleFactor"]
-        }
-        if supportsUITextFieldSpecificMutations(node) {
-            properties += ["placeholder", "secureTextEntry"]
-        }
-        if node.uiKit?.button != nil || node.role == "button" {
-            properties += ["title"]
-        }
-        if node.uiKit?.switchControl != nil || node.role == "switch" {
-            properties += ["enabled", "selected", "highlighted", "switch.isOn"]
-        } else if node.uiKit?.control != nil || node.isInteractive {
-            properties += ["enabled", "selected", "highlighted"]
-        }
-        if node.uiKit?.slider != nil || node.role == "slider" {
-            properties += ["slider.value", "slider.minimumValue", "slider.maximumValue"]
-        }
-        if node.uiKit?.stepper != nil || node.role == "stepper" {
-            properties += ["stepper.value", "stepper.minimumValue", "stepper.maximumValue", "stepper.stepValue"]
-        }
-        if node.uiKit?.segmentedControl != nil || node.role == "segmentedControl" {
-            properties += ["segmentedControl.selectedSegmentIndex"]
-        }
-        if node.uiKit?.pageControl != nil || node.role == "pageControl" {
-            properties += ["pageControl.currentPage", "pageControl.numberOfPages"]
-        }
-        if node.uiKit?.progressView != nil || node.role == "progress" {
-            properties += ["progressView.progress"]
-        }
-        if node.uiKit?.datePicker != nil || node.role == "datePicker" {
-            properties += ["datePicker.date", "datePicker.countDownDuration"]
-        }
-        if node.uiKit?.activityIndicator != nil || node.role == "activityIndicator" {
-            properties += ["activityIndicator.animating"]
-        }
-        if node.uiKit?.pickerView != nil || node.role == "pickerView" {
-            properties += ["pickerView.selectedRow"]
-        }
-        if node.uiKit?.scrollView != nil || node.role == "scrollView" {
-            properties += [
-                "contentOffset", "contentSize", "contentInset", "scrollIndicatorInsets",
-                "scrollEnabled", "pagingEnabled", "bounces", "showsVerticalScrollIndicator",
-                "showsHorizontalScrollIndicator",
-            ]
-        }
-        if node.uiKit?.stackView != nil {
-            properties += [
-                "stack.axis", "stack.alignment", "stack.distribution", "stack.spacing",
-                "stack.layoutMarginsRelativeArrangement",
-            ]
-        }
-
-        return Array(Set(properties)).sorted()
-    }
-
     private static func nodeConstraints(_ node: LoupeNode) -> [LoupeUILayoutConstraintProperties] {
         guard let layout = node.uiKit?.layout else {
             return []
@@ -4928,66 +4851,9 @@ struct LoupeCLI {
         ].joined(separator: "|")
     }
 
-    private static func supportsTextMutation(_ node: LoupeNode) -> Bool {
-        isTextBacked(node)
-    }
-
-    private static func supportsTextColorMutation(_ node: LoupeNode) -> Bool {
-        node.uiKit?.label != nil
-            || node.uiKit?.textField != nil
-            || node.uiKit?.textView != nil
-            || (node.uiKit?.button != nil && isLikelyUIKitClass(node))
-    }
-
-    private static func supportsFontSizeMutation(_ node: LoupeNode) -> Bool {
-        node.uiKit?.label != nil
-            || node.uiKit?.button != nil
-            || node.uiKit?.textField != nil
-            || node.uiKit?.textView != nil
-    }
-
-    private static func supportsTextAlignmentMutation(_ node: LoupeNode) -> Bool {
-        isLikelyUIKitClass(node)
-            && (node.uiKit?.label != nil || node.uiKit?.textField != nil || node.uiKit?.textView != nil)
-    }
-
-    private static func supportsLineBreakModeMutation(_ node: LoupeNode) -> Bool {
-        isLikelyUIKitClass(node)
-            && (node.uiKit?.label != nil || node.uiKit?.button != nil)
-    }
-
-    private static func supportsUILabelSpecificMutations(_ node: LoupeNode) -> Bool {
-        isLikelyUIKitClass(node) && node.uiKit?.label != nil
-    }
-
-    private static func supportsUITextFieldSpecificMutations(_ node: LoupeNode) -> Bool {
-        isLikelyUIKitClass(node) && node.uiKit?.textField != nil
-    }
-
-    private static func isLikelyUIKitClass(_ node: LoupeNode) -> Bool {
-        let className = node.uiKit?.className ?? node.typeName
-        return className.hasPrefix("UI")
-            || className.hasPrefix("_UI")
-            || className.contains(".UI")
-    }
-
-    private static func unsupportedMutationExamples(for node: LoupeNode) -> [String] {
-        if supportsTextMutation(node) {
-            return []
-        }
-        return ["text"]
-    }
-
-    private static func isTextBacked(_ node: LoupeNode) -> Bool {
-        node.uiKit?.label != nil
-            || node.uiKit?.button != nil
-            || node.uiKit?.textField != nil
-            || node.uiKit?.textView != nil
-    }
-
     static func renderNodeMutationCapabilities(_ node: LoupeNode) -> String {
-        let supported = supportedMutationProperties(for: node)
-        let unsupported = unsupportedMutationExamples(for: node)
+        let supported = MutationPropertySupport.supportedProperties(for: node)
+        let unsupported = MutationPropertySupport.unsupportedExamples(for: node)
         var lines = [
             "\(node.ref) \(node.uiKit?.className ?? node.typeName)",
             "supported: \(supported.isEmpty ? "none" : supported.joined(separator: ", "))",
@@ -4995,7 +4861,7 @@ struct LoupeCLI {
         if !unsupported.isEmpty {
             lines.append("unsupported: \(unsupported.joined(separator: ", "))")
         }
-        if !supportsTextMutation(node), displayText(node) != nil {
+        if !MutationPropertySupport.supportsTextMutation(node), displayText(node) != nil {
             lines.append("hint: visible text is semantic/accessibility text; mutate accessibility.label or inspect the source view instead of text.")
         }
         return lines.joined(separator: "\n")

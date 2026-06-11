@@ -1,4 +1,5 @@
 @testable import LoupeCLI
+import Foundation
 import LoupeCLIModel
 import LoupeCore
 import Testing
@@ -97,6 +98,47 @@ import Testing
         #expect(selected.map(\.ref) == ["n1", "n3"])
     }
 
+    @Test func selectedSuggestionsSkipLoupeProbeRefsWhenSnapshotIsAvailable() throws {
+        let options = try ApplyDesignSuggestionsOptions([
+            "/tmp/compare.json",
+            "--max", "3",
+        ])
+        let suggestions = [
+            suggestion(ref: "probe", property: "textColor"),
+            suggestion(ref: "visible", property: "backgroundColor"),
+        ]
+        let snapshot = snapshot(nodes: [
+            node(ref: "root", children: ["probe", "visible"]),
+            node(ref: "probe", parentRef: "root", testID: "signup.field.email.input", custom: ["loupe.probe": .bool(true)]),
+            node(ref: "visible", parentRef: "root", testID: "signup.primary"),
+        ])
+
+        let selected = options.selectedSuggestions(from: suggestions, referenceSnapshot: snapshot)
+
+        #expect(selected.map(\.ref) == ["visible"])
+    }
+
+    @Test func selectedSuggestionsSkipChildrenOfLoupeProbeRefs() throws {
+        let options = try ApplyDesignSuggestionsOptions([
+            "/tmp/compare.json",
+            "--properties", "textColor,backgroundColor",
+        ])
+        let suggestions = [
+            suggestion(ref: "probeChild", property: "textColor"),
+            suggestion(ref: "visible", property: "backgroundColor"),
+        ]
+        let snapshot = snapshot(nodes: [
+            node(ref: "root", children: ["probeHost", "visible"]),
+            node(ref: "probeHost", parentRef: "root", typeName: "UIKitPlatformViewHost<PlatformViewRepresentableAdaptor<LoupeProbeView>>", children: ["probeChild"]),
+            node(ref: "probeChild", parentRef: "probeHost", testID: "signup.field.email.input"),
+            node(ref: "visible", parentRef: "root", testID: "signup.primary"),
+        ])
+
+        let selected = options.selectedSuggestions(from: suggestions, referenceSnapshot: snapshot)
+
+        #expect(selected.map(\.ref) == ["visible"])
+    }
+
     @Test func rejectsEmptyPropertyFilter() throws {
         #expect(throws: CLIError.self) {
             _ = try ApplyDesignSuggestionsOptions([
@@ -170,6 +212,39 @@ import Testing
             valueType: "color",
             valueLabel: "#ff0000",
             reason: "test"
+        )
+    }
+
+    private func snapshot(nodes: [LoupeNode]) -> LoupeSnapshot {
+        LoupeSnapshot(
+            id: "suggestion-filter",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 393, height: 852), scale: 3),
+            rootRefs: ["root"],
+            nodes: Dictionary(uniqueKeysWithValues: nodes.map { ($0.ref, $0) })
+        )
+    }
+
+    private func node(
+        ref: String,
+        parentRef: String? = nil,
+        typeName: String = "UIView",
+        testID: String? = nil,
+        custom: [String: LoupeMetadataValue] = [:],
+        children: [String] = []
+    ) -> LoupeNode {
+        LoupeNode(
+            ref: ref,
+            parentRef: parentRef,
+            kind: parentRef == nil ? .application : .view,
+            typeName: typeName,
+            testID: testID,
+            frame: LoupeRect(x: 0, y: 0, width: 44, height: 44),
+            isVisible: true,
+            isEnabled: true,
+            isInteractive: false,
+            custom: custom,
+            children: children
         )
     }
 }

@@ -112,6 +112,61 @@ struct DesignComparisonTests {
         #expect(unexpectedWithoutTestID == false)
     }
 
+    @Test func hairlineDividerCornerRadiusDoesNotCreateStyleDelta() {
+        let snapshot = LoupeSnapshot(
+            id: "design-hairline-radius",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["line"]
+                ),
+                "line": LoupeNode(
+                    ref: "line",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "ShapeView",
+                    role: "Unknown",
+                    testID: "dashboard.divider",
+                    frame: LoupeRect(x: 268, y: 550, width: 552, height: 1),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(
+                        backgroundColor: LoupeColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1),
+                        cornerRadius: 0
+                    )
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.divider",
+                    name: "line",
+                    role: "view",
+                    frame: LoupeRect(x: 268, y: 550, width: 552, height: 1),
+                    style: LoupeDesignStyle(backgroundColor: "#E6E6E6", cornerRadius: 5)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 1)
+        #expect(!comparison.issues.contains { $0.kind == .cornerRadiusDelta })
+    }
+
     @Test func testIDMatchesStillReportRoleAndTextDeltas() {
         let snapshot = LoupeSnapshot(
             id: "design-copy",
@@ -238,6 +293,190 @@ struct DesignComparisonTests {
         })
     }
 
+    @Test func truncatedNativeDisplayTextCanMatchFullDesignText() {
+        let snapshot = LoupeSnapshot(
+            id: "design-truncated-display-text",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["total", "page-count"]
+                ),
+                "total": LoupeNode(
+                    ref: "total",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.total",
+                    text: "$302...",
+                    renderedText: "$302...",
+                    semanticText: "$302...",
+                    frame: LoupeRect(x: 1064, y: 170, width: 124, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "page-count": LoupeNode(
+                    ref: "page-count",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.page-count",
+                    text: "290…",
+                    renderedText: "290…",
+                    semanticText: "290…",
+                    frame: LoupeRect(x: 1259, y: 170, width: 123, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.total",
+                    name: "Total",
+                    role: "staticText",
+                    text: "$30200",
+                    frame: LoupeRect(x: 1064, y: 170, width: 83, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.page-count",
+                    name: "Page Count",
+                    role: "staticText",
+                    text: "290+",
+                    frame: LoupeRect(x: 1259, y: 170, width: 55, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 2)
+        #expect(!comparison.issues.contains { $0.kind == .textDelta })
+        #expect(!comparison.issues.contains { $0.kind == .frameDelta })
+    }
+
+    @Test func truncatedNativeDisplayTextDoesNotHideDifferentText() {
+        let snapshot = LoupeSnapshot(
+            id: "design-truncated-display-text-different-prefix",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "NSView",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["wrong-prefix", "no-ellipsis", "ellipsis-only"]
+                ),
+                "wrong-prefix": LoupeNode(
+                    ref: "wrong-prefix",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.wrong-prefix",
+                    text: "$402...",
+                    renderedText: "$402...",
+                    semanticText: "$402...",
+                    frame: LoupeRect(x: 1064, y: 170, width: 124, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "no-ellipsis": LoupeNode(
+                    ref: "no-ellipsis",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.no-ellipsis",
+                    text: "5",
+                    renderedText: "5",
+                    semanticText: "5",
+                    frame: LoupeRect(x: 1258, y: 338, width: 42, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+                "ellipsis-only": LoupeNode(
+                    ref: "ellipsis-only",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "dashboard.ellipsis-only",
+                    text: "...",
+                    renderedText: "...",
+                    semanticText: "...",
+                    frame: LoupeRect(x: 1260, y: 390, width: 42, height: 33),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(fontSize: 24)
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Dashboard", width: 1440, height: 900),
+            nodes: [
+                LoupeDesignNode(
+                    id: "dashboard.wrong-prefix",
+                    name: "Total",
+                    role: "staticText",
+                    text: "$30200",
+                    frame: LoupeRect(x: 1064, y: 170, width: 83, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.no-ellipsis",
+                    name: "Download",
+                    role: "staticText",
+                    text: "500",
+                    frame: LoupeRect(x: 1258, y: 338, width: 42, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+                LoupeDesignNode(
+                    id: "dashboard.ellipsis-only",
+                    name: "Ellipsis",
+                    role: "staticText",
+                    text: "500",
+                    frame: LoupeRect(x: 1260, y: 390, width: 42, height: 33),
+                    style: LoupeDesignStyle(fontSize: 24)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.issues.filter { $0.kind == .textDelta }.count == 3)
+    }
+
     @Test func genericViewWithRuntimeContainerRoleDoesNotReportRoleDelta() {
         let snapshot = LoupeSnapshot(
             id: "design-container-role-view",
@@ -324,7 +563,7 @@ struct DesignComparisonTests {
                     isVisible: true,
                     isEnabled: true,
                     isInteractive: false,
-                    children: ["wide", "shifted"]
+                    children: ["wide", "centered", "taller", "offcenter", "tooTall"]
                 ),
                 "wide": LoupeNode(
                     ref: "wide",
@@ -339,8 +578,8 @@ struct DesignComparisonTests {
                     isEnabled: true,
                     isInteractive: false
                 ),
-                "shifted": LoupeNode(
-                    ref: "shifted",
+                "centered": LoupeNode(
+                    ref: "centered",
                     parentRef: "root",
                     kind: .view,
                     typeName: "NSTextField",
@@ -348,6 +587,45 @@ struct DesignComparisonTests {
                     testID: "admin.priority.low",
                     text: "Low",
                     frame: LoupeRect(x: 763, y: 628, width: 35, height: 15),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "taller": LoupeNode(
+                    ref: "taller",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    testID: "signup.field.fullName.label",
+                    text: "Full name",
+                    frame: LoupeRect(x: 36, y: 195, width: 214, height: 18),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "offcenter": LoupeNode(
+                    ref: "offcenter",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "NSTextField",
+                    role: "staticText",
+                    testID: "admin.priority.offcenter",
+                    text: "Low",
+                    frame: LoupeRect(x: 750, y: 656, width: 35, height: 15),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "tooTall": LoupeNode(
+                    ref: "tooTall",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    testID: "signup.field.email.label",
+                    text: "Email address",
+                    frame: LoupeRect(x: 36, y: 356, width: 214, height: 28),
                     isVisible: true,
                     isEnabled: true,
                     isInteractive: false
@@ -371,17 +649,172 @@ struct DesignComparisonTests {
                     text: "Low",
                     frame: LoupeRect(x: 770, y: 628, width: 22, height: 15)
                 ),
+                LoupeDesignNode(
+                    id: "admin.priority.offcenter",
+                    name: "Off-center Low badge",
+                    role: "staticText",
+                    text: "Low",
+                    frame: LoupeRect(x: 770, y: 656, width: 22, height: 15)
+                ),
+                LoupeDesignNode(
+                    id: "signup.field.fullName.label",
+                    name: "Full name label",
+                    role: "staticText",
+                    text: "Full name",
+                    frame: LoupeRect(x: 36, y: 195, width: 214, height: 14)
+                ),
+                LoupeDesignNode(
+                    id: "signup.field.email.label",
+                    name: "Email label",
+                    role: "staticText",
+                    text: "Email address",
+                    frame: LoupeRect(x: 36, y: 356, width: 214, height: 14)
+                ),
             ]
         )
 
         let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
 
-        #expect(comparison.matchedCount == 2)
+        #expect(comparison.matchedCount == 5)
         #expect(!comparison.issues.contains { issue in
             issue.kind == .frameDelta && issue.designID == "admin.sidebar.dashboard"
         })
-        #expect(comparison.issues.contains { issue in
+        #expect(!comparison.issues.contains { issue in
             issue.kind == .frameDelta && issue.designID == "admin.priority.low"
+        })
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .frameDelta && issue.designID == "signup.field.fullName.label"
+        })
+        #expect(comparison.issues.contains { issue in
+            issue.kind == .frameDelta && issue.designID == "admin.priority.offcenter"
+        })
+        #expect(comparison.issues.contains { issue in
+            issue.kind == .frameDelta && issue.designID == "signup.field.email.label"
+        })
+    }
+
+    @Test func iconTextColorCanUseTintOrChildForegroundColor() {
+        let orange = LoupeColor(red: 0.9569, green: 0.3176, blue: 0.1412, alpha: 1)
+        let snapshot = LoupeSnapshot(
+            id: "icon-foreground-color",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 393, height: 852), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "UIView",
+                    frame: LoupeRect(x: 0, y: 0, width: 393, height: 852),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["image", "social", "socialText", "mismatch", "mismatchText"]
+                ),
+                "image": LoupeNode(
+                    ref: "image",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UIImageView",
+                    role: "image",
+                    testID: "signup.field.password.visibility",
+                    frame: LoupeRect(x: 325, y: 313, width: 17, height: 14),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(tintColor: orange)
+                ),
+                "social": LoupeNode(
+                    ref: "social",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UIView",
+                    testID: "signup.social.google",
+                    frame: LoupeRect(x: 136, y: 714, width: 34, height: 34),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["socialText"]
+                ),
+                "socialText": LoupeNode(
+                    ref: "socialText",
+                    parentRef: "social",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    text: "G",
+                    frame: LoupeRect(x: 136, y: 714, width: 34, height: 34),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(textColor: orange)
+                ),
+                "mismatch": LoupeNode(
+                    ref: "mismatch",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UIView",
+                    testID: "signup.social.facebook",
+                    frame: LoupeRect(x: 179, y: 714, width: 34, height: 34),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["mismatchText"]
+                ),
+                "mismatchText": LoupeNode(
+                    ref: "mismatchText",
+                    parentRef: "mismatch",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    text: "f",
+                    frame: LoupeRect(x: 179, y: 714, width: 34, height: 34),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(textColor: LoupeColor(red: 0, green: 0, blue: 1, alpha: 1))
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "YumQuick", width: 393, height: 852),
+            nodes: [
+                LoupeDesignNode(
+                    id: "signup.field.password.visibility",
+                    name: "Password visibility",
+                    role: "image",
+                    frame: LoupeRect(x: 325, y: 313, width: 17, height: 14),
+                    style: LoupeDesignStyle(textColor: "#F45124")
+                ),
+                LoupeDesignNode(
+                    id: "signup.social.google",
+                    name: "Google sign-up",
+                    role: "view",
+                    frame: LoupeRect(x: 136, y: 714, width: 34, height: 34),
+                    style: LoupeDesignStyle(textColor: "#F45124")
+                ),
+                LoupeDesignNode(
+                    id: "signup.social.facebook",
+                    name: "Facebook sign-up",
+                    role: "view",
+                    frame: LoupeRect(x: 179, y: 714, width: 34, height: 34),
+                    style: LoupeDesignStyle(textColor: "#F45124")
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 3)
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .textColorDelta && issue.designID == "signup.field.password.visibility"
+        })
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .textColorDelta && issue.designID == "signup.social.google"
+        })
+        #expect(comparison.issues.contains { issue in
+            issue.kind == .textColorDelta && issue.designID == "signup.social.facebook"
         })
     }
 
@@ -1005,6 +1438,7 @@ struct DesignComparisonTests {
                     kind: .view,
                     typeName: "UIView",
                     testID: "synthetic.banking.transfer.screen",
+                    semanticText: "Review transfer Unexpected copy",
                     frame: LoupeRect(x: 0, y: 0, width: 393, height: 852),
                     isVisible: true,
                     isEnabled: true,
@@ -1061,6 +1495,107 @@ struct DesignComparisonTests {
         #expect(comparison.issues.contains { issue in
             issue.kind == .unexpectedAppNode
                 && issue.testID == "synthetic.banking.transfer.extra"
+        })
+    }
+
+    @Test func matchedAggregateSplitTextChildrenDoNotCountAsUnexpectedNodes() {
+        let snapshot = LoupeSnapshot(
+            id: "split-static-text",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 393, height: 852), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .view,
+                    typeName: "UIView",
+                    frame: LoupeRect(x: 0, y: 0, width: 393, height: 852),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["terms", "terms-prefix", "terms-link", "extra"]
+                ),
+                "terms": LoupeNode(
+                    ref: "terms",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UIView",
+                    testID: "signup.terms",
+                    semanticText: "By continuing, you agree to Terms of Use and Privacy Policy.",
+                    frame: LoupeRect(x: 60, y: 608, width: 273, height: 28),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "terms-prefix": LoupeNode(
+                    ref: "terms-prefix",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    testID: "signup.terms.prefix",
+                    text: "By continuing, you agree to",
+                    frame: LoupeRect(x: 60, y: 611, width: 273, height: 11),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "terms-link": LoupeNode(
+                    ref: "terms-link",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    testID: "signup.terms.link",
+                    text: "Terms of Use and Privacy Policy.",
+                    frame: LoupeRect(x: 60, y: 621, width: 273, height: 12),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+                "extra": LoupeNode(
+                    ref: "extra",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "UILabel",
+                    role: "staticText",
+                    testID: "signup.extra.copy",
+                    text: "Extra copy",
+                    frame: LoupeRect(x: 60, y: 660, width: 273, height: 12),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Sign Up", width: 393, height: 852),
+            nodes: [
+                LoupeDesignNode(
+                    id: "signup.terms",
+                    name: "Terms copy",
+                    role: "staticText",
+                    text: "By continuing, you agree to Terms of Use and Privacy Policy.",
+                    frame: LoupeRect(x: 60, y: 608, width: 273, height: 28)
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 1)
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .unexpectedAppNode
+                && issue.testID == "signup.terms.prefix"
+        })
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .unexpectedAppNode
+                && issue.testID == "signup.terms.link"
+        })
+        #expect(comparison.issues.contains { issue in
+            issue.kind == .unexpectedAppNode
+                && issue.testID == "signup.extra.copy"
         })
     }
 
@@ -1891,6 +2426,70 @@ struct DesignComparisonTests {
         #expect(comparison.issues.isEmpty)
     }
 
+    @Test func appAuthoredProbeControlDoesNotCreatePlaceholderStyleNoise() {
+        let snapshot = LoupeSnapshot(
+            id: "app-authored-probe-control",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 393, height: 852), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .application,
+                    typeName: "YumQuick",
+                    frame: LoupeRect(x: 0, y: 0, width: 393, height: 852),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["tab"]
+                ),
+                "tab": LoupeNode(
+                    ref: "tab",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "ProbeControl",
+                    role: "button",
+                    testID: "contact.tab.faq.probe",
+                    label: "FAQ",
+                    text: "FAQ",
+                    frame: LoupeRect(x: 35, y: 161, width: 155, height: 28),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: true
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Contact", width: 393, height: 852),
+            nodes: [
+                LoupeDesignNode(
+                    id: "contact.tab.faq",
+                    name: "FAQ tab",
+                    role: "button",
+                    text: "FAQ",
+                    frame: LoupeRect(x: 35, y: 161, width: 155, height: 28),
+                    style: LoupeDesignStyle(
+                        backgroundColor: "#F9D8CE",
+                        textColor: "#F45124",
+                        cornerRadius: 14,
+                        fontName: "System Medium",
+                        fontSize: 14
+                    )
+                ),
+            ]
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(comparison.matchedCount == 1)
+        #expect(!comparison.issues.contains { $0.kind == .backgroundColorDelta })
+        #expect(!comparison.issues.contains { $0.kind == .cornerRadiusDelta })
+        #expect(!comparison.issues.contains { $0.kind == .textColorDelta })
+        #expect(!comparison.issues.contains { $0.kind == .fontNameDelta })
+        #expect(!comparison.issues.contains { $0.kind == .fontSizeDelta })
+    }
+
     @Test func probeBackedMeaningfulUnexpectedChildStillReportsUnexpectedNode() {
         let snapshot = LoupeSnapshot(
             id: "probe-backed-unexpected-child",
@@ -1966,6 +2565,106 @@ struct DesignComparisonTests {
         })
         #expect(!comparison.issues.contains { issue in
             issue.kind == .unexpectedAppNode && issue.testID == "contact.probeLayer"
+        })
+    }
+
+    @Test func fullFrameProbeLabelSurfaceDoesNotCountAsUnexpectedNode() {
+        let snapshot = LoupeSnapshot(
+            id: "full-frame-probe-label",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1200, height: 800), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .application,
+                    typeName: "Admin",
+                    frame: LoupeRect(x: 0, y: 0, width: 1200, height: 800),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["adapter", "small-adapter"]
+                ),
+                "adapter": LoupeNode(
+                    ref: "adapter",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<LoupeProbeView>>",
+                    frame: LoupeRect(x: 0, y: 0, width: 1200, height: 800),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["background"]
+                ),
+                "background": LoupeNode(
+                    ref: "background",
+                    parentRef: "adapter",
+                    kind: .view,
+                    typeName: "NSView",
+                    role: "Group",
+                    testID: "admin.background",
+                    label: "Dashboard background",
+                    semanticText: "Dashboard background",
+                    frame: LoupeRect(x: 0, y: 0, width: 1200, height: 800),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(
+                        backgroundColor: LoupeColor(red: 0, green: 0, blue: 0, alpha: 0),
+                        cornerRadius: 0
+                    ),
+                    accessibility: LoupeAccessibility(
+                        identifier: "admin.background",
+                        label: "Dashboard background",
+                        traits: ["Group"],
+                        frame: LoupeRect(x: 0, y: 0, width: 1200, height: 800),
+                        isElement: true
+                    )
+                ),
+                "small-adapter": LoupeNode(
+                    ref: "small-adapter",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<LoupeProbeView>>",
+                    frame: LoupeRect(x: 24, y: 24, width: 200, height: 44),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["small-group"]
+                ),
+                "small-group": LoupeNode(
+                    ref: "small-group",
+                    parentRef: "small-adapter",
+                    kind: .view,
+                    typeName: "NSView",
+                    role: "Group",
+                    testID: "admin.unexpected.group",
+                    label: "Unexpected group",
+                    semanticText: "Unexpected group",
+                    frame: LoupeRect(x: 24, y: 24, width: 200, height: 44),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    style: LoupeStyle(
+                        backgroundColor: LoupeColor(red: 0, green: 0, blue: 0, alpha: 0),
+                        cornerRadius: 0
+                    )
+                ),
+            ]
+        )
+        let design = LoupeDesignDocument(
+            frame: LoupeDesignFrame(name: "Admin", width: 1200, height: 800),
+            nodes: []
+        )
+
+        let comparison = LoupeDesignComparator.compare(snapshot: snapshot, design: design)
+
+        #expect(!comparison.issues.contains { issue in
+            issue.kind == .unexpectedAppNode && issue.testID == "admin.background"
+        })
+        #expect(comparison.issues.contains { issue in
+            issue.kind == .unexpectedAppNode && issue.testID == "admin.unexpected.group"
         })
     }
 }

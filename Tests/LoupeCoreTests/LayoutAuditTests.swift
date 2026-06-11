@@ -839,6 +839,10 @@ struct LayoutAuditTests {
                     parentRef: "root",
                     kind: .view,
                     typeName: "NSView",
+                    role: "Unknown",
+                    testID: "status.badge.background",
+                    label: "Badge background",
+                    semanticText: "Badge background",
                     frame: LoupeRect(x: 32, y: 40, width: 80, height: 28),
                     isVisible: true,
                     isEnabled: true,
@@ -846,6 +850,13 @@ struct LayoutAuditTests {
                     style: LoupeStyle(
                         backgroundColor: LoupeColor(red: 0, green: 0, blue: 0, alpha: 1),
                         cornerRadius: 14
+                    ),
+                    accessibility: LoupeAccessibility(
+                        identifier: "status.badge.background",
+                        label: "Badge background",
+                        traits: ["Unknown"],
+                        frame: LoupeRect(x: 32, y: 40, width: 80, height: 28),
+                        isElement: true
                     )
                 ),
                 "badge-label": LoupeNode(
@@ -1249,6 +1260,82 @@ struct LayoutAuditTests {
         })
     }
 
+    @Test func auditIgnoresOversizedAppleStaticTextFrameOverlapNoise() {
+        let snapshot = LoupeSnapshot(
+            id: "oversized-apple-static-text-overlap",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .window,
+                    typeName: "NSWindow",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["count", "caption"]
+                ),
+                "count": appKitStaticText(
+                    ref: "count",
+                    text: "3",
+                    frame: LoupeRect(x: 559, y: 373, width: 14, height: 66),
+                    fontSize: 14
+                ),
+                "caption": appKitStaticText(
+                    ref: "caption",
+                    text: "Solved",
+                    frame: LoupeRect(x: 542, y: 405, width: 45, height: 19),
+                    fontSize: 12
+                ),
+            ]
+        )
+
+        let audit = LoupeLayoutAuditor.audit(snapshot)
+
+        #expect(!audit.issues.contains { $0.kind == .overlappingSiblings })
+    }
+
+    @Test func auditReportsRegularAppleStaticTextOverlap() {
+        let snapshot = LoupeSnapshot(
+            id: "regular-apple-static-text-overlap",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 1440, height: 900), scale: 2),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .window,
+                    typeName: "NSWindow",
+                    frame: LoupeRect(x: 0, y: 0, width: 1440, height: 900),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["title", "subtitle"]
+                ),
+                "title": appKitStaticText(
+                    ref: "title",
+                    text: "Revenue",
+                    frame: LoupeRect(x: 80, y: 80, width: 92, height: 20),
+                    fontSize: 14
+                ),
+                "subtitle": appKitStaticText(
+                    ref: "subtitle",
+                    text: "Review",
+                    frame: LoupeRect(x: 100, y: 88, width: 78, height: 20),
+                    fontSize: 14
+                ),
+            ]
+        )
+
+        let audit = LoupeLayoutAuditor.audit(snapshot)
+
+        #expect(audit.issues.contains { $0.kind == .overlappingSiblings })
+    }
+
     @Test func auditIgnoresOversizedAccessiblePassiveBackgroundContainmentNoise() {
         let snapshot = LoupeSnapshot(
             id: "oversized-accessible-background-containment",
@@ -1417,6 +1504,46 @@ struct LayoutAuditTests {
         let audit = LoupeLayoutAuditor.audit(snapshot)
 
         #expect(!audit.issues.contains { $0.kind == .childOutsideParent })
+    }
+
+    @Test func auditIgnoresAppAuthoredProbeControlTargetSizeNoise() {
+        let snapshot = LoupeSnapshot(
+            id: "probe-control-target-size",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            screen: LoupeScreen(size: LoupeSize(width: 393, height: 852), scale: 3),
+            rootRefs: ["root"],
+            nodes: [
+                "root": LoupeNode(
+                    ref: "root",
+                    parentRef: nil,
+                    kind: .application,
+                    typeName: "UIApplication",
+                    role: "application",
+                    frame: LoupeRect(x: 0, y: 0, width: 393, height: 852),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: false,
+                    children: ["probe"]
+                ),
+                "probe": LoupeNode(
+                    ref: "probe",
+                    parentRef: "root",
+                    kind: .view,
+                    typeName: "ProbeControl",
+                    role: "button",
+                    testID: "probe_disclosure_instagram",
+                    text: "Instagram disclosure",
+                    frame: LoupeRect(x: 334, y: 471, width: 13, height: 8),
+                    isVisible: true,
+                    isEnabled: true,
+                    isInteractive: true
+                ),
+            ]
+        )
+
+        let audit = LoupeLayoutAuditor.audit(snapshot)
+
+        #expect(!audit.issues.contains { $0.kind == .smallInteractiveTarget })
     }
 
     private func button(ref: String, testID: String?, frame: LoupeRect) -> LoupeNode {
@@ -1691,6 +1818,52 @@ struct LayoutAuditTests {
             userInteractionEnabled: false,
             isFirstResponder: false,
             label: LoupeUILabelProperties()
+        )
+    }
+
+    private func appKitStaticText(ref: String, text: String, frame: LoupeRect, fontSize: Double) -> LoupeNode {
+        LoupeNode(
+            ref: ref,
+            parentRef: "root",
+            kind: .view,
+            typeName: "NSTextField",
+            role: "staticText",
+            testID: "dashboard.\(ref)",
+            label: text,
+            value: text,
+            text: text,
+            renderedText: text,
+            semanticText: text,
+            frame: frame,
+            isVisible: true,
+            isEnabled: true,
+            isInteractive: false,
+            style: LoupeStyle(
+                fontName: "HelveticaNeue-Medium",
+                fontSize: fontSize,
+                textColor: LoupeColor(red: 1, green: 1, blue: 1, alpha: 1)
+            ),
+            accessibility: LoupeAccessibility(
+                identifier: "dashboard.\(ref)",
+                label: text,
+                value: text,
+                traits: ["staticText"],
+                frame: frame,
+                isElement: true
+            ),
+            runtime: LoupeNodeRuntimeProperties(frameworkBundleIdentifier: "com.apple.AppKit"),
+            uiKit: LoupeUIKitProperties(
+                className: "NSTextField",
+                tag: 0,
+                alpha: 1,
+                isHidden: false,
+                isOpaque: false,
+                clipsToBounds: false,
+                userInteractionEnabled: false,
+                isFirstResponder: false,
+                label: LoupeUILabelProperties(numberOfLines: 1, lineBreakMode: "byClipping"),
+                textField: LoupeUITextFieldProperties(textAlignment: "left", borderStyle: "none")
+            )
         )
     }
 
