@@ -1429,10 +1429,18 @@ private func runtimeConstraints() -> [NSLayoutConstraint] {
     }
 
     func visit(_ view: NSView) {
-        view.constraints.forEach(append)
-        view.constraintsAffectingLayout(for: .horizontal).forEach(append)
-        view.constraintsAffectingLayout(for: .vertical).forEach(append)
-        view.subviews.forEach(visit)
+        for constraint in view.constraints {
+            append(constraint)
+        }
+        for constraint in view.constraintsAffectingLayout(for: .horizontal) {
+            append(constraint)
+        }
+        for constraint in view.constraintsAffectingLayout(for: .vertical) {
+            append(constraint)
+        }
+        for subview in view.subviews {
+            visit(subview)
+        }
     }
 
     for window in NSApp.windows {

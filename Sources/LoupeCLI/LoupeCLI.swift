@@ -1685,7 +1685,7 @@ struct LoupeCLI {
             diff: diffURL.path,
             targets: targetsURL.path,
             responses: responsesURL.path,
-            traceDirectory: options.traceDirectory.path,
+            traceDirectory: options.traceDirectory.path
         )
         let resultData = try encoder.encode(result)
         try resultData.write(to: options.traceDirectory.appendingPathComponent("summary.json"))

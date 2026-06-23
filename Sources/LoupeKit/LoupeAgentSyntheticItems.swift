@@ -304,10 +304,14 @@ func barButtonCandidateViews(in view: UIView) -> [UIView] {
         if current is UIControl {
             result.append(current)
         }
-        current.subviews.forEach(walk)
+        for subview in current.subviews {
+            walk(subview)
+        }
     }
 
-    view.subviews.forEach(walk)
+    for subview in view.subviews {
+        walk(subview)
+    }
     return result.sorted { lhs, rhs in
         barButtonCandidateArea(lhs) > barButtonCandidateArea(rhs)
     }
@@ -370,10 +374,14 @@ func tabBarItemCandidateViews(in view: UIView) -> [UIView] {
         if current is UIControl {
             result.append(current)
         }
-        current.subviews.forEach(walk)
+        for subview in current.subviews {
+            walk(subview)
+        }
     }
 
-    view.subviews.forEach(walk)
+    for subview in view.subviews {
+        walk(subview)
+    }
     return result.sorted {
         let lhsFrame = frameInScreen(for: $0)
         let rhsFrame = frameInScreen(for: $1)
@@ -400,7 +408,9 @@ func descendantText(in view: UIView) -> String {
         if let label = current.accessibilityLabel, !label.isEmpty {
             parts.append(label)
         }
-        current.subviews.forEach(walk)
+        for subview in current.subviews {
+            walk(subview)
+        }
     }
 
     walk(view)

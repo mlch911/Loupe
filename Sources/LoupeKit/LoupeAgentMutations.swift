@@ -796,10 +796,18 @@ private func runtimeConstraints() -> [NSLayoutConstraint] {
     }
 
     func visit(_ view: UIView) {
-        view.constraints.forEach(append)
-        view.constraintsAffectingLayout(for: .horizontal).forEach(append)
-        view.constraintsAffectingLayout(for: .vertical).forEach(append)
-        view.subviews.forEach(visit)
+        for constraint in view.constraints {
+            append(constraint)
+        }
+        for constraint in view.constraintsAffectingLayout(for: .horizontal) {
+            append(constraint)
+        }
+        for constraint in view.constraintsAffectingLayout(for: .vertical) {
+            append(constraint)
+        }
+        for subview in view.subviews {
+            visit(subview)
+        }
     }
 
     for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
